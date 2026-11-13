@@ -61,7 +61,7 @@ export default function BudgetPage() {
     await actions.audit('Export', 'report', null, `${title} ${fy} (Excel, ${rows.length - 1} rows)`);
   };
   const xl = (onClick: () => void) => can('export')
-    ? <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); onClick(); }}><Download className="h-3.5 w-3.5" />Excel</Button> : null;
+    ? <Button size="sm" variant="success" onClick={(e) => { e.stopPropagation(); onClick(); }}><Download className="h-3.5 w-3.5" />Download Excel</Button> : null;
   const logTitle = `Expense log${month ? ` ${MONTHS[Number(month.slice(5)) - 1]}` : ''}${catFilter ? ` ${catFilter}` : ''}`;
 
   const exportExcel = async () => {
