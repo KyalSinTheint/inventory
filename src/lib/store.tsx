@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { createAdapter, type DataAdapter } from './db';
 import { compressImage } from './files';
 import {
-  applyDelta, budgetCategory, can, checkAvailability, depositTransition, isValidNrc, nextRef, normalizeNrc, RuleError, stockDelta, validateLines, validateNewDeposit,
+  applyDelta, budgetCategory, can, checkAvailability, depositTransition, isValidNrc, nextRef, validateTrainingDates, normalizeNrc, RuleError, stockDelta, validateLines, validateNewDeposit,
   type DepositAction, type Permission,
 } from './logic';
 import type {
@@ -281,7 +281,7 @@ function makeActions(
 
     // ------------------------------------------------------------ deposits
     async registerDeposit(
-      input: Pick<Deposit, 'trainee_name' | 'nrc' | 'agent_code' | 'trainee_type' | 'batch_id' | 'training_date' | 'amount' | 'payment_date'>,
+      input: Pick<Deposit, 'trainee_name' | 'nrc' | 'agent_code' | 'trainee_type' | 'batch_id' | 'training_date' | 'training_end_date' | 'amount' | 'payment_date'>,
       files: File[] = [],
     ) {
       need('deposit.create');
@@ -290,7 +290,7 @@ function makeActions(
       for (const f of files) documents.push(await db.upload(f));
       const saved = await insertWithRef('deposits', 'DEP', (ref) => ({
         id: uid(), ref, trainee_name: input.trainee_name.trim(), nrc: input.nrc.trim(), agent_code: input.agent_code?.trim().toUpperCase() || null,
-        trainee_type: input.trainee_type, batch_id: input.batch_id, training_date: input.training_date,
+        trainee_type: input.trainee_type, batch_id: input.batch_id, training_date: input.training_date, training_end_date: input.training_end_date,
         amount: input.amount, payment_date: input.payment_date, voucher_ref: null, status: 'Held',
         forfeit_reason: null, request_note: null, attachment: null, documents, requested_by: null, requested_at: null,
         hod_approved_by: null, hod_approved_at: null, finance_approved_by: null, finance_approved_at: null,
@@ -300,11 +300,12 @@ function makeActions(
       await audit('Register deposit', 'deposit', saved.id, `${saved.ref}: ${saved.trainee_name} (NRC ${saved.nrc}, ${saved.trainee_type}) ${saved.amount} MMK${documents.length ? `, ${documents.length} document(s)` : ''}`);
       return saved;
     },
-    async editDeposit(id: string, patch: Pick<Deposit, 'trainee_name' | 'nrc' | 'agent_code' | 'trainee_type' | 'training_date' | 'amount' | 'payment_date'>) {
+    async editDeposit(id: string, patch: Pick<Deposit, 'trainee_name' | 'nrc' | 'agent_code' | 'trainee_type' | 'training_date' | 'training_end_date' | 'amount' | 'payment_date'>) {
       need('deposit.create');
       const d = get().data.deposits.find((x) => x.id === id);
       if (!d || d.status !== 'Held') throw new RuleError('Only Held deposits can be corrected. Approved ones need a reversal.');
-      if (!(patch.amount > 0) || !patch.trainee_name.trim() || !patch.training_date) throw new RuleError('Name, amount and training date are required.');
+      if (!(patch.amount > 0) || !patch.trainee_name.trim()) throw new RuleError('Name and amount are required.');
+      validateTrainingDates(patch.training_date, patch.training_end_date);
       if (!isValidNrc(patch.nrc)) throw new RuleError('NRC format looks wrong. Example: 12/MaYaKa(N)123456');
       const others = get().data.deposits.filter((x) => x.id !== id && x.status !== 'Refunded' && x.status !== 'Forfeited');
       if (others.some((x) => normalizeNrc(x.nrc) === normalizeNrc(patch.nrc))) throw new RuleError('Another open deposit already uses this NRC.');

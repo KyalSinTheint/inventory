@@ -212,9 +212,15 @@ export function isValidNrc(nrc: string): boolean {
   return /^([1-9]|1[0-4])\/[^/()]{2,12}\([^()]{1,8}\)\d{6}$/.test(normalizeNrc(nrc));
 }
 
+export function validateTrainingDates(start: string, end: string | null): void {
+  if (!start) throw new RuleError('Training start date is required.');
+  if (!end) throw new RuleError('Training end date is required.');
+  if (end < start) throw new RuleError('Training end date cannot be before the start date.');
+}
+
 /** "System auto check" run when a deposit is registered. */
 export function validateNewDeposit(
-  input: Pick<Deposit, 'trainee_name' | 'nrc' | 'trainee_type' | 'batch_id' | 'training_date' | 'amount' | 'payment_date'>,
+  input: Pick<Deposit, 'trainee_name' | 'nrc' | 'trainee_type' | 'batch_id' | 'training_date' | 'training_end_date' | 'amount' | 'payment_date'>,
   existing: Deposit[], batches: Batch[],
 ): void {
   if (!input.trainee_name.trim()) throw new RuleError('Trainee name is required.');
@@ -224,7 +230,7 @@ export function validateNewDeposit(
   const b = batches.find((x) => x.id === input.batch_id);
   if (!b) throw new RuleError('Choose a license course batch.');
   if (b.program !== 'License' || b.status === 'Completed') throw new RuleError('The batch must be an active License class.');
-  if (!input.training_date) throw new RuleError('Training date is required.');
+  validateTrainingDates(input.training_date, input.training_end_date);
   if (!(input.amount > 0)) throw new RuleError('Deposit amount must be above zero.');
   if (!input.payment_date) throw new RuleError('Payment date is required.');
   if (input.payment_date > new Date().toISOString().slice(0, 10)) throw new RuleError('Payment date cannot be in the future.');

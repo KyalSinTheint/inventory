@@ -136,7 +136,7 @@ function Row({ d, batch, onOpen, alert }: { d: Deposit; batch: string; onOpen: (
       <td><div className="font-medium">{d.trainee_name}</div><div className="flex flex-wrap items-center gap-1 text-xs text-slate-500"><Badge tone={d.trainee_type === 'External' ? 'purple' : 'navy'}>{d.trainee_type}</Badge>{d.agent_code}</div></td>
       <td className="whitespace-nowrap text-sm">{d.nrc}</td>
       <td className="whitespace-nowrap">{batch}</td>
-      <td className="whitespace-nowrap">{date(d.training_date)}</td>
+      <td className="whitespace-nowrap text-sm">{date(d.training_date)}{d.training_end_date && d.training_end_date !== d.training_date && <div className="text-xs text-slate-500">to {date(d.training_end_date)}</div>}</td>
       <td className="num">{mmk(d.amount)}</td>
       <td><StatusBadge status={d.status} />{d.status === 'Refund Request' && d.hod_approved_by && <div className="mt-1 text-xs text-slate-500">HOD ✓ · awaiting Finance</div>}</td>
       <td className="whitespace-nowrap">{alert.level === 'expired' ? <Badge tone="red">Term ended</Badge> : alert.level === 'warning' ? <Badge tone="amber">{alert.daysLeft}d left</Badge> : <span className="text-xs text-slate-400">—</span>}</td>
@@ -153,7 +153,7 @@ function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (i
   const first = batches[0];
   const [f, setF] = useState({
     trainee_name: '', nrc: '', agent_code: '', trainee_type: 'Internal' as TraineeType, batch_id: first?.id ?? '',
-    training_date: first?.start_date ?? today(), amount: '', payment_date: today(),
+    training_date: first?.start_date ?? today(), training_end_date: first?.end_date || first?.start_date || today(), amount: '', payment_date: today(),
   });
   const [files, setFiles] = useState<File[]>([]);
   const [newBatch, setNewBatch] = useState(false);
@@ -161,7 +161,7 @@ function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (i
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
   const pickBatch = (id: string) => {
     const b = data.batches.find((x) => x.id === id);
-    setF({ ...f, batch_id: id, training_date: b?.start_date || f.training_date });
+    setF({ ...f, batch_id: id, training_date: b?.start_date || f.training_date, training_end_date: b?.end_date || b?.start_date || f.training_end_date });
   };
   return (
     <Modal wide open onClose={onClose} title="Register license class deposit" footer={<>
@@ -193,7 +193,9 @@ function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (i
             {can('batch.manage') && <Button variant="secondary" type="button" onClick={() => setNewBatch(true)} aria-label="New batch" title="New batch"><Plus className="h-4 w-4" /></Button>}
           </div>
         </Field>
-        <Field label="Training date" required hint="Defaults to the batch start date"><input className="input" type="date" value={f.training_date} onChange={set('training_date')} /></Field>
+        <Field label="Training start date" required hint="Defaults to the batch dates"><input className="input" type="date" value={f.training_date}
+          onChange={(e) => setF({ ...f, training_date: e.target.value, training_end_date: f.training_end_date && f.training_end_date < e.target.value ? e.target.value : f.training_end_date })} /></Field>
+        <Field label="Training end date" required><input className="input" type="date" min={f.training_date} value={f.training_end_date} onChange={set('training_end_date')} /></Field>
         <Field label="Deposit amount (MMK)" required><input className="input" type="number" min="0" step="any" inputMode="decimal" value={f.amount} onChange={set('amount')} /></Field>
         <Field label="Payment date" required><input className="input" type="date" max={today()} value={f.payment_date} onChange={set('payment_date')} /></Field>
         <Field label="Documents" hint="NRC copy, payment slip, agreement… (PDF, image, Word, Excel)" className="sm:col-span-2">
@@ -202,7 +204,7 @@ function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (i
       </div>
       <p className="mt-3 text-xs text-slate-500">The system checks for missing fields, and an existing open deposit for the same NRC before saving.</p>
       <ErrorNote error={error} />
-      {newBatch && <QuickBatch onClose={() => setNewBatch(false)} onCreated={(b) => { setNewBatch(false); setF({ ...f, batch_id: b.id, training_date: b.start_date || f.training_date }); }} />}
+      {newBatch && <QuickBatch onClose={() => setNewBatch(false)} onCreated={(b) => { setNewBatch(false); setF({ ...f, batch_id: b.id, training_date: b.start_date || f.training_date, training_end_date: b.end_date || b.start_date || f.training_end_date }); }} />}
     </Modal>
   );
 }

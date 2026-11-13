@@ -199,7 +199,10 @@ export interface Deposit {
   agent_code: string | null;
   trainee_type: TraineeType;
   batch_id: string;
+  /** Training start date. */
   training_date: string;
+  /** Training end date (null on records made before it was added). */
+  training_end_date: string | null;
   amount: number;
   payment_date: string;
   /** No longer collected (removed at the L&D team's request); kept for older records. */

@@ -35,7 +35,8 @@ with real data before going live.
 2. In **SQL Editor**, run the files in `supabase/migrations/` **in filename order**:
    `20261112000000_ld_portal.sql` (tables, rules, triggers, Row Level Security, private `attachments` bucket), then
    `20261113000000_nrc_documents_categories.sql` (NRC, documents, photos, branches, category budgets), then
-   `20261114000000_optional_voucher_supplier.sql` (voucher, supplier and invoice no. no longer required). All are safe to run again.
+   `20261114000000_optional_voucher_supplier.sql` (voucher, supplier and invoice no. no longer required), then
+   `20261115000000_training_end_date.sql` (training start and end dates on deposits). All are safe to run again.
 3. Copy `.env.example` to `.env` and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
    (Project Settings → API).
 4. `npm run build` and deploy `dist/` (a `vercel.json` is included; any static host works).

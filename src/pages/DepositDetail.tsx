@@ -28,7 +28,7 @@ export default function DepositDetail() {
 
   const rows: [string, React.ReactNode][] = [
     ['Trainee', d.trainee_name], ['NRC', d.nrc], ['Trainee type', d.trainee_type], ['Agent code / employee ID', d.agent_code ?? '—'],
-    ['License course batch', batch ? `${batchLabel(batch)} · ${batch.name}` : '—'], ['Training date', date(d.training_date)],
+    ['License course batch', batch ? `${batchLabel(batch)} · ${batch.name}` : '—'], ['Training dates', `${date(d.training_date)} – ${date(d.training_end_date)}`],
     ['Deposit amount', <b key="a">{mmk(d.amount)}</b>], ['Payment date', date(d.payment_date)],
     ['Ledger', ledger], ['Service term ends', <span key="t">{date(r.dueDate)} {d.status === 'Held' && r.level !== 'ok' && <Badge tone={r.level === 'expired' ? 'red' : 'amber'}>{r.level === 'expired' ? 'ended' : `${r.daysLeft} days left`}</Badge>}</span>],
     ['Registered by', `${name(d.created_by)} · ${dateTime(d.created_at)}`],
@@ -93,7 +93,7 @@ function EditDeposit({ d, onClose }: { d: Deposit; onClose: () => void }) {
   const { actions } = useData();
   const toast = useToast();
   const [f, setF] = useState({
-    trainee_name: d.trainee_name, nrc: d.nrc, agent_code: d.agent_code ?? '', trainee_type: d.trainee_type, training_date: d.training_date,
+    trainee_name: d.trainee_name, nrc: d.nrc, agent_code: d.agent_code ?? '', trainee_type: d.trainee_type, training_date: d.training_date, training_end_date: d.training_end_date ?? '',
     amount: String(d.amount), payment_date: d.payment_date,
   });
   const { busy, error, run } = useSubmit();
@@ -101,7 +101,7 @@ function EditDeposit({ d, onClose }: { d: Deposit; onClose: () => void }) {
   return (
     <Modal open onClose={onClose} title={`Correct ${d.ref}`} footer={<>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
-      <Button busy={busy} onClick={() => run(async () => { await actions.editDeposit(d.id, { ...f, agent_code: f.agent_code || null, amount: Number(f.amount) }); toast('Deposit corrected; change logged'); onClose(); })}>Save correction</Button>
+      <Button busy={busy} onClick={() => run(async () => { await actions.editDeposit(d.id, { ...f, agent_code: f.agent_code || null, training_end_date: f.training_end_date || null, amount: Number(f.amount) }); toast('Deposit corrected; change logged'); onClose(); })}>Save correction</Button>
     </>}>
       <p className="mb-3 text-sm text-slate-600">Corrections are only possible while the deposit is Held. The old and new values are written to the audit log.</p>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -109,7 +109,8 @@ function EditDeposit({ d, onClose }: { d: Deposit; onClose: () => void }) {
         <Field label="NRC number" hint={NRC_HINT}><input className="input" value={f.nrc} onChange={set('nrc')} /></Field>
         <Field label="Agent code / employee ID"><input className="input uppercase" value={f.agent_code} onChange={set('agent_code')} /></Field>
         <Field label="Trainee type"><select className="input" value={f.trainee_type} onChange={(e) => setF({ ...f, trainee_type: e.target.value as TraineeType })}>{TRAINEE_TYPES.map((x) => <option key={x}>{x}</option>)}</select></Field>
-        <Field label="Training date"><input className="input" type="date" value={f.training_date} onChange={set('training_date')} /></Field>
+        <Field label="Training start date"><input className="input" type="date" value={f.training_date} onChange={set('training_date')} /></Field>
+        <Field label="Training end date"><input className="input" type="date" min={f.training_date} value={f.training_end_date} onChange={set('training_end_date')} /></Field>
         <Field label="Amount (MMK)"><input className="input" type="number" value={f.amount} onChange={set('amount')} /></Field>
         <Field label="Payment date"><input className="input" type="date" max={today()} value={f.payment_date} onChange={set('payment_date')} /></Field>
       </div>

@@ -51,7 +51,7 @@ export function depositMasterReport(data: DataSet, rows: Deposit[], by: string):
     columns: [
       { header: 'Deposit ID', value: (d) => d.ref }, { header: 'Trainee name', value: (d) => d.trainee_name }, { header: 'NRC', value: (d) => d.nrc },
       { header: 'Type', value: (d) => d.trainee_type }, { header: 'Agent code', value: (d) => d.agent_code ?? '' },
-      { header: 'Batch', value: (d) => batch(d.batch_id) }, { header: 'Training date', value: (d) => d.training_date }, { header: 'Amount (MMK)', value: (d) => d.amount, numeric: true },
+      { header: 'Batch', value: (d) => batch(d.batch_id) }, { header: 'Training start', value: (d) => d.training_date }, { header: 'Training end', value: (d) => d.training_end_date ?? '' }, { header: 'Amount (MMK)', value: (d) => d.amount, numeric: true },
       { header: 'Payment date', value: (d) => d.payment_date }, { header: 'Status', value: (d) => d.status },
       { header: 'Forfeit reason', value: (d) => d.forfeit_reason ?? '' }, { header: 'Closed', value: (d) => d.closed_at?.slice(0, 10) ?? '' },
     ],

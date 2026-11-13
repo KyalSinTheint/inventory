@@ -210,7 +210,7 @@ export function buildSeed(): DataSet {
     const d: Deposit = {
       id: id('dep'), ref: `DEP-${new Date(created).getFullYear()}-${String(i + 1).padStart(4, '0')}`, trainee_name: names[i][0],
       nrc: nrcOf(i, batch === 'b-lic0' ? 9 : batch === 'b-lic4' ? 13 : 12), agent_code: names[i][1] || null, trainee_type: i % 4 === 3 ? 'External' : 'Internal',
-      training_date: batches.find((b) => b.id === batch)!.start_date,
+      training_date: batches.find((b) => b.id === batch)!.start_date, training_end_date: batches.find((b) => b.id === batch)!.end_date,
       documents: [{ name: `Payment_slip_${names[i][0].replace(/\s+/g, '_')}.pdf`, url: 'data:application/pdf;base64,JVBERi0xLjQKJSBkZW1vCg==', size: 18 }],
       batch_id: batch, amount: batch === 'b-lic0' || batch === 'b-lic4' ? 200_000 : 250_000, payment_date: created.slice(0, 10), voucher_ref: null,
       status, forfeit_reason: null, request_note: requested ? (status.includes('Forfeit') ? 'Did not attend the final 3 sessions; HR confirmation attached.' : 'Passed the IRD license exam.') : null,
