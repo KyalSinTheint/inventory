@@ -214,7 +214,7 @@ export function isValidNrc(nrc: string): boolean {
 
 /** "System auto check" run when a deposit is registered. */
 export function validateNewDeposit(
-  input: Pick<Deposit, 'trainee_name' | 'nrc' | 'trainee_type' | 'batch_id' | 'training_date' | 'amount' | 'payment_date' | 'voucher_ref'>,
+  input: Pick<Deposit, 'trainee_name' | 'nrc' | 'trainee_type' | 'batch_id' | 'training_date' | 'amount' | 'payment_date'>,
   existing: Deposit[], batches: Batch[],
 ): void {
   if (!input.trainee_name.trim()) throw new RuleError('Trainee name is required.');
@@ -228,13 +228,9 @@ export function validateNewDeposit(
   if (!(input.amount > 0)) throw new RuleError('Deposit amount must be above zero.');
   if (!input.payment_date) throw new RuleError('Payment date is required.');
   if (input.payment_date > new Date().toISOString().slice(0, 10)) throw new RuleError('Payment date cannot be in the future.');
-  if (!input.voucher_ref.trim()) throw new RuleError('Voucher reference is required.');
   const nrc = normalizeNrc(input.nrc);
   const dup = existing.find((d) => normalizeNrc(d.nrc) === nrc && d.status !== 'Refunded' && d.status !== 'Forfeited');
   if (dup) throw new RuleError(`NRC ${input.nrc} already has an open deposit (${dup.ref}).`);
-  const v = input.voucher_ref.trim().toLowerCase();
-  const vdup = existing.find((d) => d.voucher_ref.trim().toLowerCase() === v);
-  if (vdup) throw new RuleError(`Voucher ${input.voucher_ref} is already recorded on ${vdup.ref}.`);
 }
 
 export function addMonths(isoDate: string, months: number): string {

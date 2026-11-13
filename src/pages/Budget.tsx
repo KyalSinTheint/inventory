@@ -35,33 +35,47 @@ export default function BudgetPage() {
   const maxMonth = Math.max(1, ...months.map((m) => m.total));
   const batchCode = (id: string | null) => data.batches.find((b) => b.id === id)?.code ?? '';
 
+  const fy = `FY${year}`;
+  const monthlyRows = (): (string | number)[][] => [
+    ['Month', 'Purchases', 'Other expenses', 'Total spend', 'Cumulative', 'Cumulative % of budget', 'Materials issued to classes'],
+    ...months.map((m, i) => [`${MONTHS[i]} ${year}`, m.purchases, m.expenses, m.total, m.cumulative, overall ? `${utilizationPct(overall.amount, m.cumulative).toFixed(1)}%` : '', m.issued]),
+    ['Total', actual.purchases, actual.expenses, actual.total, '', '', months.reduce((s, m) => s + m.issued, 0)],
+  ];
+  const categoryRows = (): (string | number)[][] => [
+    ['Category', 'Budget', 'Materials issued', 'Expenses', 'Actual', 'Remaining', 'Used %'],
+    ...catRows.map((r) => [r.c, r.budget, r.a.materials, r.a.expenses, r.a.total, r.budget ? r.budget - r.a.total : '', r.budget ? `${utilizationPct(r.budget, r.a.total).toFixed(1)}%` : '']),
+    ['Total', catRows.reduce((s, r) => s + r.budget, 0), catRows.reduce((s, r) => s + r.a.materials, 0), catRows.reduce((s, r) => s + r.a.expenses, 0), catRows.reduce((s, r) => s + r.a.total, 0), '', ''],
+  ];
+  const batchSheetRows = (): (string | number)[][] => [
+    ['Batch', 'Name', 'Category', 'Budget', 'Materials', 'Other expenses', 'Actual', 'Variance', 'Variance %'],
+    ...batchRows.map((r) => [r.batch.code, r.batch.name, budgetCategory(r.batch), r.batch.budget, r.materials, r.expenses, r.actual, r.variance, r.pct === null ? '' : `${r.pct.toFixed(1)}%`]),
+  ];
+  const expenseRows = (list: typeof expenses): (string | number)[][] => [
+    ['Date', 'Category', 'Type', 'Description', 'Batch', 'Amount', 'Recorded by'],
+    ...[...list].sort((a, b) => a.date.localeCompare(b.date)).map((e) => [e.date, e.budget_category, e.category, e.description, batchCode(e.batch_id), e.amount, name(e.created_by)]),
+    ['', '', '', '', 'Total', list.reduce((s, e) => s + e.amount, 0), ''],
+  ];
+  /** Downloads one table as its own Excel file, with a title row, and logs the export. */
+  const exportTable = async (title: string, file: string, rows: (string | number)[][]) => {
+    await exportWorkbook(`${file}_${fy}_${today()}`, [{ name: title, rows: [[`${title} · ${fy}`], [`Generated ${new Date().toLocaleString('en-GB')} by ${user.name}`], [], ...rows] }]);
+    await actions.audit('Export', 'report', null, `${title} ${fy} (Excel, ${rows.length - 1} rows)`);
+  };
+  const xl = (onClick: () => void) => can('export')
+    ? <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); onClick(); }}><Download className="h-3.5 w-3.5" />Excel</Button> : null;
+  const logTitle = `Expense log${month ? ` ${MONTHS[Number(month.slice(5)) - 1]}` : ''}${catFilter ? ` ${catFilter}` : ''}`;
+
   const exportExcel = async () => {
-    const fy = `FY${year}`;
     await exportWorkbook(`budget_${fy}_${today()}`, [
       { name: 'Summary', rows: [
         [`L&D Budget & Expense: ${fy}`], [`Generated ${new Date().toLocaleString('en-GB')} by ${user.name}`], [],
         ['Overall budget', overall?.amount ?? 0], ['Purchases (approved stock in)', actual.purchases], ['Other expenses', actual.expenses],
         ['Total actual', actual.total], ['Variance (actual − budget)', overall ? actual.total - overall.amount : ''], ['Variance %', v === null ? '' : `${v.toFixed(1)}%`],
       ] },
-      { name: 'Monthly', rows: [
-        ['Month', 'Purchases', 'Other expenses', 'Total spend', 'Cumulative', 'Cumulative % of budget', 'Materials issued to classes'],
-        ...months.map((m, i) => [`${MONTHS[i]} ${year}`, m.purchases, m.expenses, m.total, m.cumulative, overall ? `${utilizationPct(overall.amount, m.cumulative).toFixed(1)}%` : '', m.issued]),
-        ['Total', actual.purchases, actual.expenses, actual.total, '', '', months.reduce((s, m) => s + m.issued, 0)],
-      ] },
-      { name: 'By category', rows: [
-        ['Category', 'Budget', 'Materials issued', 'Expenses', 'Actual', 'Remaining', 'Used %'],
-        ...catRows.map((r) => [r.c, r.budget, r.a.materials, r.a.expenses, r.a.total, r.budget ? r.budget - r.a.total : '', r.budget ? `${utilizationPct(r.budget, r.a.total).toFixed(1)}%` : '']),
-      ] },
+      { name: 'Monthly', rows: monthlyRows() },
+      { name: 'By category', rows: categoryRows() },
       { name: 'Category by month', rows: categoryMonthMatrix(year, data, catRows.map((r) => r.c)) },
-      { name: 'Batches', rows: [
-        ['Batch', 'Name', 'Category', 'Budget', 'Materials', 'Other expenses', 'Actual', 'Variance', 'Variance %'],
-        ...batchRows.map((r) => [r.batch.code, r.batch.name, budgetCategory(r.batch), r.batch.budget, r.materials, r.expenses, r.actual, r.variance, r.pct === null ? '' : `${r.pct.toFixed(1)}%`]),
-      ] },
-      { name: 'Expenses', rows: [
-        ['Date', 'Category', 'Type', 'Description', 'Batch', 'Amount', 'Recorded by'],
-        ...data.expenses.filter((e) => e.date.startsWith(String(year))).sort((a, b) => a.date.localeCompare(b.date))
-          .map((e) => [e.date, e.budget_category, e.category, e.description, batchCode(e.batch_id), e.amount, name(e.created_by)]),
-      ] },
+      { name: 'Batches', rows: batchSheetRows() },
+      { name: 'Expenses', rows: expenseRows(data.expenses.filter((e) => e.date.startsWith(String(year)))) },
     ]);
     await actions.audit('Export', 'report', null, `Budget workbook ${fy} (Excel)`);
   };
@@ -71,7 +85,7 @@ export default function BudgetPage() {
       <PageHeader title="Budget & Expenses" subtitle="Overall, category and batch budgets against actual spend"
         actions={<>
           <select className="input w-auto" value={year} onChange={(e) => { setYear(Number(e.target.value)); setMonth(''); }} aria-label="Fiscal year">{years.map((y) => <option key={y} value={y}>FY{y}</option>)}</select>
-          {can('export') && <Button variant="secondary" onClick={exportExcel}><Download className="h-4 w-4" />Export Excel</Button>}
+          {can('export') && <Button variant="secondary" onClick={exportExcel}><Download className="h-4 w-4" />Export all (Excel)</Button>}
           {can('budget.manage') && <Button variant="secondary" onClick={() => setModal('budget')}>Set budgets</Button>}
           {can('expense.create') && <Button onClick={() => setModal('expense')}><Plus className="h-4 w-4" />Record expense</Button>}
         </>} />
@@ -91,7 +105,7 @@ export default function BudgetPage() {
         </Card>
       </div>
 
-      <Card title="Category expense" className="mb-6" padded={false}>
+      <Card title="Category expense" className="mb-6" padded={false} actions={xl(() => exportTable('Category expense', 'category-expense', categoryRows()))}>
         <div className="overflow-x-auto">
           <table className="tbl">
             <thead><tr><th>Category</th><th className="num">Budget</th><th className="num">Materials issued</th><th className="num">Expenses</th><th className="num">Actual</th><th className="num">Remaining</th><th className="min-w-40">Used</th></tr></thead>
@@ -118,7 +132,7 @@ export default function BudgetPage() {
         <p className="px-4 py-2 text-xs text-slate-500">Actual = materials issued to the category's batches (at cost) + expenses tagged to it. License classes are split by branch. Click a category to filter the expense log.</p>
       </Card>
 
-      <Card title={`Monthly preview FY${year}`} className="mb-6">
+      <Card title={`Monthly preview FY${year}`} className="mb-6" actions={xl(() => exportTable('Monthly preview', 'monthly-preview', monthlyRows()))}>
         <div className="flex h-44 items-end gap-1.5 sm:gap-3" role="group" aria-label="Monthly spend chart">
           {months.map((m, i) => {
             const h = (m.total / maxMonth) * 100;
@@ -156,7 +170,7 @@ export default function BudgetPage() {
         </div>
       </Card>
 
-      <Card title="Training batch variance" padded={false} className="mb-6">
+      <Card title="Training batch variance" padded={false} className="mb-6" actions={xl(() => exportTable('Training batch variance', 'batch-variance', batchSheetRows()))}>
         <div className="overflow-x-auto">
           <table className="tbl">
             <thead><tr><th>Batch</th><th>Category</th><th className="num">Budget</th><th className="num">Materials issued</th><th className="num">Other expenses</th><th className="num">Actual</th><th className="num">Variance</th><th className="num">Variance %</th></tr></thead>
@@ -172,7 +186,10 @@ export default function BudgetPage() {
       </Card>
 
       <Card title={`Expense log${month ? ` · ${MONTHS[Number(month.slice(5)) - 1]} ${year}` : ''}${catFilter ? ` · ${catFilter}` : ''}`} padded={false}
-        actions={(month || catFilter) ? <Button size="sm" variant="ghost" onClick={() => { setMonth(''); setCatFilter(''); }}>Show all FY{year}</Button> : undefined}>
+        actions={<>
+          {(month || catFilter) && <Button size="sm" variant="ghost" onClick={() => { setMonth(''); setCatFilter(''); }}>Show all FY{year}</Button>}
+          {expenses.length > 0 && xl(() => exportTable(logTitle, 'expense-log', expenseRows(expenses)))}
+        </>}>
         <div className="overflow-x-auto">
           <table className="tbl">
             <thead><tr><th>Date</th><th>Category</th><th>Type</th><th>Description</th><th>Batch</th><th className="num">Amount</th><th>By</th></tr></thead>

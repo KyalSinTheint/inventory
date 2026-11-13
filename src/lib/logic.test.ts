@@ -80,11 +80,10 @@ test('registration auto-check: required fields, license batch, NRC duplicates', 
     { id: 'b1', code: 'LIC', name: 'L', program: 'License', location: 'YGN', start_date: '', end_date: '', budget: 0, status: 'Active', created_at: NOW },
     { id: 'b2', code: 'CORP', name: 'C', program: 'Corporate', location: null, start_date: '', end_date: '', budget: 0, status: 'Active', created_at: NOW },
   ];
-  const input = { trainee_name: 'B', nrc: '12 / mayaka (n) 123456', trainee_type: 'External' as const, batch_id: 'b1', training_date: '2026-01-05', amount: 1000, payment_date: '2026-01-01', voucher_ref: 'RV-9' };
+  const input = { trainee_name: 'B', nrc: '12 / mayaka (n) 123456', trainee_type: 'External' as const, batch_id: 'b1', training_date: '2026-01-05', amount: 1000, payment_date: '2026-01-01' };
   assert.throws(() => validateNewDeposit(input, [dep()], batches), /open deposit/);
   assert.doesNotThrow(() => validateNewDeposit(input, [dep({ status: 'Refunded' })], batches));
   assert.doesNotThrow(() => validateNewDeposit({ ...input, nrc: '12/MaYaKa(N)654321' }, [dep()], batches));
-  assert.throws(() => validateNewDeposit({ ...input, nrc: '12/MaYaKa(N)654321', voucher_ref: 'rv-1' }, [dep()], batches), /Voucher/);
   assert.throws(() => validateNewDeposit({ ...input, nrc: 'AG-1234' }, [], batches), /NRC format/);
   assert.throws(() => validateNewDeposit({ ...input, batch_id: 'b2' }, [], batches), /License/);
   assert.throws(() => validateNewDeposit({ ...input, training_date: '' }, [], batches), /Training date/);

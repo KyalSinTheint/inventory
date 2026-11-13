@@ -202,7 +202,8 @@ export interface Deposit {
   training_date: string;
   amount: number;
   payment_date: string;
-  voucher_ref: string;
+  /** No longer collected (removed at the L&D team's request); kept for older records. */
+  voucher_ref: string | null;
   status: DepositStatus;
   forfeit_reason: ForfeitReason | null;
   request_note: string | null;

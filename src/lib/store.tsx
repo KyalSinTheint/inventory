@@ -142,18 +142,17 @@ function makeActions(
     },
 
     // ------------------------------------------------------------ inventory
-    async stockIn(input: { item_id: string; qty: number; unit_cost: number; supplier: string; invoice_no: string; reason: string }, invoice?: File | null) {
+    async stockIn(input: { item_id: string; qty: number; unit_cost: number; reason: string }, invoice?: File | null) {
       need('stock.create');
       const it = item(input.item_id);
       if (!Number.isInteger(input.qty) || input.qty <= 0) throw new RuleError('Quantity must be a whole number above zero.');
       if (!(input.unit_cost >= 0)) throw new RuleError('Unit cost cannot be negative.');
-      if (!input.supplier.trim() || !input.invoice_no.trim()) throw new RuleError('Supplier and invoice number are required for stock in.');
       const attachment = invoice ? await db.upload(invoice) : null;
       const t = await insertWithRef('stock_txns', 'STK', (ref) => ({
         ...baseTxn(), ref, type: 'IN', item_id: it.id, qty: input.qty, unit_cost: input.unit_cost, attachment,
-        supplier: input.supplier.trim(), invoice_no: input.invoice_no.trim(), reason: input.reason.trim() || null,
+        reason: input.reason.trim() || null,
       }));
-      await audit('Stock In requested', 'stock_txn', t.id, `${t.ref}: ${t.qty} × ${it.name} from ${t.supplier} (${t.invoice_no})`);
+      await audit('Stock In requested', 'stock_txn', t.id, `${t.ref}: ${t.qty} × ${it.name} @ ${t.unit_cost}${attachment ? ` (invoice ${attachment.name})` : ''}`);
       return t;
     },
     async stockAdjust(input: { item_id: string; qty: number; reason: string }) {
@@ -282,7 +281,7 @@ function makeActions(
 
     // ------------------------------------------------------------ deposits
     async registerDeposit(
-      input: Pick<Deposit, 'trainee_name' | 'nrc' | 'agent_code' | 'trainee_type' | 'batch_id' | 'training_date' | 'amount' | 'payment_date' | 'voucher_ref'>,
+      input: Pick<Deposit, 'trainee_name' | 'nrc' | 'agent_code' | 'trainee_type' | 'batch_id' | 'training_date' | 'amount' | 'payment_date'>,
       files: File[] = [],
     ) {
       need('deposit.create');
@@ -292,7 +291,7 @@ function makeActions(
       const saved = await insertWithRef('deposits', 'DEP', (ref) => ({
         id: uid(), ref, trainee_name: input.trainee_name.trim(), nrc: input.nrc.trim(), agent_code: input.agent_code?.trim().toUpperCase() || null,
         trainee_type: input.trainee_type, batch_id: input.batch_id, training_date: input.training_date,
-        amount: input.amount, payment_date: input.payment_date, voucher_ref: input.voucher_ref.trim(), status: 'Held',
+        amount: input.amount, payment_date: input.payment_date, voucher_ref: null, status: 'Held',
         forfeit_reason: null, request_note: null, attachment: null, documents, requested_by: null, requested_at: null,
         hod_approved_by: null, hod_approved_at: null, finance_approved_by: null, finance_approved_at: null,
         finance_voucher_ref: null, closed_at: null, reversal_from: null, reversal_reason: null, created_by: get().user.id, created_at: nowIso(),
@@ -301,11 +300,11 @@ function makeActions(
       await audit('Register deposit', 'deposit', saved.id, `${saved.ref}: ${saved.trainee_name} (NRC ${saved.nrc}, ${saved.trainee_type}) ${saved.amount} MMK${documents.length ? `, ${documents.length} document(s)` : ''}`);
       return saved;
     },
-    async editDeposit(id: string, patch: Pick<Deposit, 'trainee_name' | 'nrc' | 'agent_code' | 'trainee_type' | 'training_date' | 'amount' | 'payment_date' | 'voucher_ref'>) {
+    async editDeposit(id: string, patch: Pick<Deposit, 'trainee_name' | 'nrc' | 'agent_code' | 'trainee_type' | 'training_date' | 'amount' | 'payment_date'>) {
       need('deposit.create');
       const d = get().data.deposits.find((x) => x.id === id);
       if (!d || d.status !== 'Held') throw new RuleError('Only Held deposits can be corrected. Approved ones need a reversal.');
-      if (!(patch.amount > 0) || !patch.trainee_name.trim() || !patch.voucher_ref.trim() || !patch.training_date) throw new RuleError('Name, amount, training date and voucher are required.');
+      if (!(patch.amount > 0) || !patch.trainee_name.trim() || !patch.training_date) throw new RuleError('Name, amount and training date are required.');
       if (!isValidNrc(patch.nrc)) throw new RuleError('NRC format looks wrong. Example: 12/MaYaKa(N)123456');
       const others = get().data.deposits.filter((x) => x.id !== id && x.status !== 'Refunded' && x.status !== 'Forfeited');
       if (others.some((x) => normalizeNrc(x.nrc) === normalizeNrc(patch.nrc))) throw new RuleError('Another open deposit already uses this NRC.');

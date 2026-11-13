@@ -29,7 +29,7 @@ export default function DepositDetail() {
   const rows: [string, React.ReactNode][] = [
     ['Trainee', d.trainee_name], ['NRC', d.nrc], ['Trainee type', d.trainee_type], ['Agent code / employee ID', d.agent_code ?? '—'],
     ['License course batch', batch ? `${batchLabel(batch)} · ${batch.name}` : '—'], ['Training date', date(d.training_date)],
-    ['Deposit amount', <b key="a">{mmk(d.amount)}</b>], ['Payment date', date(d.payment_date)], ['Voucher reference', d.voucher_ref],
+    ['Deposit amount', <b key="a">{mmk(d.amount)}</b>], ['Payment date', date(d.payment_date)],
     ['Ledger', ledger], ['Service term ends', <span key="t">{date(r.dueDate)} {d.status === 'Held' && r.level !== 'ok' && <Badge tone={r.level === 'expired' ? 'red' : 'amber'}>{r.level === 'expired' ? 'ended' : `${r.daysLeft} days left`}</Badge>}</span>],
     ['Registered by', `${name(d.created_by)} · ${dateTime(d.created_at)}`],
   ];
@@ -94,7 +94,7 @@ function EditDeposit({ d, onClose }: { d: Deposit; onClose: () => void }) {
   const toast = useToast();
   const [f, setF] = useState({
     trainee_name: d.trainee_name, nrc: d.nrc, agent_code: d.agent_code ?? '', trainee_type: d.trainee_type, training_date: d.training_date,
-    amount: String(d.amount), payment_date: d.payment_date, voucher_ref: d.voucher_ref,
+    amount: String(d.amount), payment_date: d.payment_date,
   });
   const { busy, error, run } = useSubmit();
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
@@ -112,7 +112,6 @@ function EditDeposit({ d, onClose }: { d: Deposit; onClose: () => void }) {
         <Field label="Training date"><input className="input" type="date" value={f.training_date} onChange={set('training_date')} /></Field>
         <Field label="Amount (MMK)"><input className="input" type="number" value={f.amount} onChange={set('amount')} /></Field>
         <Field label="Payment date"><input className="input" type="date" max={today()} value={f.payment_date} onChange={set('payment_date')} /></Field>
-        <Field label="Voucher reference" className="sm:col-span-2"><input className="input" value={f.voucher_ref} onChange={set('voucher_ref')} /></Field>
       </div>
       <ErrorNote error={error} />
     </Modal>

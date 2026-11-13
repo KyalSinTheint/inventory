@@ -99,7 +99,7 @@ function ActionModal({ kind, deposit: d, onClose, run }: {
     </>}>
       <div className="mb-4 rounded-lg bg-silver-100 px-3 py-2 text-sm">
         <div className="font-medium text-navy-900">{d.ref} · {d.trainee_name} · NRC {d.nrc}</div>
-        <div className="text-slate-600">{mmk(d.amount)} · voucher {d.voucher_ref}</div>
+        <div className="text-slate-600">{mmk(d.amount)} · paid {d.payment_date}</div>
       </div>
       <p className="mb-4 text-sm text-slate-600">{m.explain}</p>
       <div className="space-y-3">

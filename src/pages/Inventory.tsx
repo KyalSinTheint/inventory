@@ -97,14 +97,14 @@ function TxnsTab() {
     const s = q.trim().toLowerCase();
     return data.stock_txns
       .filter((t) => (!type || t.type === type) && (!status || t.status === status))
-      .filter((t) => !s || t.ref.toLowerCase().includes(s) || (item(t.item_id)?.name.toLowerCase().includes(s) ?? false) || (t.invoice_no ?? '').toLowerCase().includes(s))
+      .filter((t) => !s || t.ref.toLowerCase().includes(s) || (item(t.item_id)?.name.toLowerCase().includes(s) ?? false) || (t.reason ?? '').toLowerCase().includes(s))
       .sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 500);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.stock_txns, type, status, q]);
   return (
     <>
       <div className="mb-4 flex flex-wrap gap-2">
-        <SearchBox value={q} onChange={setQ} placeholder="Search ref, item, invoice" />
+        <SearchBox value={q} onChange={setQ} placeholder="Search ref, item, note" />
         <select className="input w-auto" value={type} onChange={(e) => setType(e.target.value)} aria-label="Type"><option value="">All types</option>{Object.entries(TXN_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
         <select className="input w-auto" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">All statuses</option><option>Pending</option><option>Approved</option><option>Rejected</option></select>
       </div>
@@ -150,7 +150,7 @@ function ItemPicker({ value, onChange, filter }: { value: string; onChange: (v: 
 function StockInModal({ onClose }: { onClose: () => void }) {
   const { data, actions } = useData();
   const toast = useToast();
-  const [f, setF] = useState({ item_id: '', qty: '', unit_cost: '', total: '', supplier: '', invoice_no: '', reason: '' });
+  const [f, setF] = useState({ item_id: '', qty: '', unit_cost: '', total: '', reason: '' });
   const [invoice, setInvoice] = useState<File[]>([]);
   const { busy, error, run } = useSubmit();
   const it = data.items.find((i) => i.id === f.item_id);
@@ -174,9 +174,7 @@ function StockInModal({ onClose }: { onClose: () => void }) {
         <Field label={`Quantity${it ? ` (${it.unit})` : ''}`} required><input className="input" type="number" min="1" step="1" value={f.qty} onChange={(e) => setQty(e.target.value)} /></Field>
         <Field label="Cost per unit (MMK)" hint={it ? `Current: ${num(it.unit_cost)}` : undefined}><input className="input" type="number" min="0" step="any" value={f.unit_cost} onChange={(e) => setCost(e.target.value)} /></Field>
         <Field label="Total cost (MMK)" hint="Qty × cost per unit"><input className="input font-medium" type="number" min="0" step="any" value={f.total} onChange={(e) => setTotal(e.target.value)} /></Field>
-        <Field label="Supplier" required className="sm:col-span-2"><input className="input" value={f.supplier} onChange={(e) => setF({ ...f, supplier: e.target.value })} /></Field>
-        <Field label="Invoice no." required><input className="input" value={f.invoice_no} onChange={(e) => setF({ ...f, invoice_no: e.target.value })} /></Field>
-        <Field label="Supplier invoice (scan / photo / PDF)" className="sm:col-span-3"><FilePicker files={invoice} onChange={setInvoice} accept={DOC_ACCEPT} label="Attach invoice…" /></Field>
+        <Field label="Invoice (scan / photo / PDF)" className="sm:col-span-3"><FilePicker files={invoice} onChange={setInvoice} accept={DOC_ACCEPT} label="Attach invoice…" /></Field>
         <Field label="Note" className="sm:col-span-3"><input className="input" value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} /></Field>
       </div>
       <p className="mt-3 text-xs text-slate-500">The balance is updated when the L&D HOD approves.</p>

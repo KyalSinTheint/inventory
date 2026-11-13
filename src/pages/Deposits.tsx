@@ -34,7 +34,7 @@ export default function DepositsPage() {
       .filter((d) => !status || (status === 'open' ? OPEN_STATUSES.includes(d.status) || d.status === 'Reversal Request' : d.status === status))
       .filter((d) => !batch || d.batch_id === batch)
       .filter((d) => !type || d.trainee_type === type)
-      .filter((d) => !s || [d.ref, d.trainee_name, d.agent_code ?? '', d.voucher_ref].some((v) => v.toLowerCase().includes(s)) || (sn.length > 1 && normalizeNrc(d.nrc).includes(sn)))
+      .filter((d) => !s || [d.ref, d.trainee_name, d.agent_code ?? ''].some((v) => v.toLowerCase().includes(s)) || (sn.length > 1 && normalizeNrc(d.nrc).includes(sn)))
       .sort((a, b) => b.ref.localeCompare(a.ref));
   }, [data.deposits, q, status, batch, type]);
   const t = depositTotals(rows);
@@ -153,7 +153,7 @@ function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (i
   const first = batches[0];
   const [f, setF] = useState({
     trainee_name: '', nrc: '', agent_code: '', trainee_type: 'Internal' as TraineeType, batch_id: first?.id ?? '',
-    training_date: first?.start_date ?? today(), amount: '', payment_date: today(), voucher_ref: '',
+    training_date: first?.start_date ?? today(), amount: '', payment_date: today(),
   });
   const [files, setFiles] = useState<File[]>([]);
   const [newBatch, setNewBatch] = useState(false);
@@ -196,12 +196,11 @@ function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (i
         <Field label="Training date" required hint="Defaults to the batch start date"><input className="input" type="date" value={f.training_date} onChange={set('training_date')} /></Field>
         <Field label="Deposit amount (MMK)" required><input className="input" type="number" min="0" step="any" inputMode="decimal" value={f.amount} onChange={set('amount')} /></Field>
         <Field label="Payment date" required><input className="input" type="date" max={today()} value={f.payment_date} onChange={set('payment_date')} /></Field>
-        <Field label="Voucher reference" required><input className="input" value={f.voucher_ref} onChange={set('voucher_ref')} placeholder="Receipt voucher no." /></Field>
         <Field label="Documents" hint="NRC copy, payment slip, agreement… (PDF, image, Word, Excel)" className="sm:col-span-2">
           <FilePicker files={files} onChange={setFiles} multiple accept={DOC_ACCEPT} label="Attach documents…" />
         </Field>
       </div>
-      <p className="mt-3 text-xs text-slate-500">The system checks for missing fields, an existing open deposit for the same NRC, and duplicate vouchers before saving.</p>
+      <p className="mt-3 text-xs text-slate-500">The system checks for missing fields, and an existing open deposit for the same NRC before saving.</p>
       <ErrorNote error={error} />
       {newBatch && <QuickBatch onClose={() => setNewBatch(false)} onCreated={(b) => { setNewBatch(false); setF({ ...f, batch_id: b.id, training_date: b.start_date || f.training_date }); }} />}
     </Modal>

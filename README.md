@@ -34,7 +34,8 @@ with real data before going live.
 1. Create a Supabase project.
 2. In **SQL Editor**, run the files in `supabase/migrations/` **in filename order**:
    `20261112000000_ld_portal.sql` (tables, rules, triggers, Row Level Security, private `attachments` bucket), then
-   `20261113000000_nrc_documents_categories.sql` (NRC, documents, photos, branches, category budgets). Both are safe to run again.
+   `20261113000000_nrc_documents_categories.sql` (NRC, documents, photos, branches, category budgets), then
+   `20261114000000_optional_voucher_supplier.sql` (voucher, supplier and invoice no. no longer required). All are safe to run again.
 3. Copy `.env.example` to `.env` and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
    (Project Settings → API).
 4. `npm run build` and deploy `dist/` (a `vercel.json` is included; any static host works).
@@ -73,6 +74,10 @@ with real data before going live.
 
 Batches now carry a branch (YGN / MDY / TGI); a License batch's budget category is *License – branch*.
 
+**v3:** deposits no longer ask for a voucher reference (Finance still records its payment voucher when confirming a refund);
+stock in no longer asks for supplier or invoice number (the invoice file can still be attached); every table on the
+Budget page has its own **Excel** button that exports exactly what the table shows, including month / category filters.
+
 ### Deposit lifecycle
 
 ```
@@ -90,8 +95,8 @@ Rejecting any request sends the deposit back to Held (or back to its closed stat
 * **Maker-checker:** nobody can approve something they submitted.
 * **Retention alert:** a Held deposit is flagged from month 11 and marked *term ended* at month 12.
   Both are configurable in **Settings**.
-* Registration checks for missing fields, a valid NRC, a License batch that is not completed, an existing open
-  deposit for the same NRC (spacing, case and Myanmar/English digits ignored), and duplicate vouchers.
+* Registration checks for missing fields, a valid NRC, a License batch that is not completed, and an existing open
+  deposit for the same NRC (spacing, case and Myanmar/English digits ignored).
 
 ### Where the rules are enforced
 
