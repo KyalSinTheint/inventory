@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowDownToLine, Pencil, Plus, RotateCcw, SlidersHorizontal, ClipboardCheck } from 'lucide-react';
+import { ArrowDownToLine, Camera, Pencil, Plus, RotateCcw, SlidersHorizontal, ClipboardCheck, Trash2 } from 'lucide-react';
+import { FileLink, FilePicker, Thumb } from '../components/files';
+import { DOC_ACCEPT } from '../lib/files';
 import { useData } from '../lib/store';
 import { CATEGORIES, CLASSIFICATIONS, TXN_LABELS, type Category, type CountLine, type Item, type ReturnCondition } from '../lib/types';
 import { isLowStock } from '../lib/logic';
@@ -23,7 +25,7 @@ export default function InventoryPage() {
           <Button variant="secondary" onClick={() => setModal('adjust')}><SlidersHorizontal className="h-4 w-4" />Adjust / write-off</Button>
         </>} />
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'items', label: 'Stock on hand' }, { id: 'txns', label: 'Transactions' }, { id: 'count', label: 'Physical count' }]} />
-      {tab === 'items' && <ItemsTab lowOnly={params.get('low') === '1'} onEdit={(item) => setModal({ item })} />}
+      {tab === 'items' && <ItemsTab lowOnly={params.get('low') === '1'} initialCat={params.get('cat') ?? ''} onEdit={(item) => setModal({ item })} />}
       {tab === 'txns' && <TxnsTab />}
       {tab === 'count' && <CountTab />}
       {modal === 'in' && <StockInModal onClose={() => setModal(null)} />}
@@ -34,10 +36,10 @@ export default function InventoryPage() {
   );
 }
 
-function ItemsTab({ lowOnly, onEdit }: { lowOnly: boolean; onEdit: (i?: Item) => void }) {
+function ItemsTab({ lowOnly, initialCat, onEdit }: { lowOnly: boolean; initialCat: string; onEdit: (i?: Item) => void }) {
   const { data, can } = useData();
   const [q, setQ] = useState('');
-  const [cat, setCat] = useState<string>('');
+  const [cat, setCat] = useState<string>(initialCat);
   const [low, setLow] = useState(lowOnly);
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -56,12 +58,13 @@ function ItemsTab({ lowOnly, onEdit }: { lowOnly: boolean; onEdit: (i?: Item) =>
       </div>
       <div className="table-wrap">
         <table className="tbl">
-          <thead><tr><th>Code</th><th>Item</th><th>Category</th><th>Type</th><th className="num">On hand</th><th className="num">Min</th><th className="num">Unit cost</th><th className="num">Value</th>{can('item.manage') && <th />}</tr></thead>
+          <thead><tr><th className="w-12" /><th>Code</th><th>Item</th><th>Category</th><th>Type</th><th className="num">On hand</th><th className="num">Min</th><th className="num">Cost / unit</th><th className="num">Value (qty × cost)</th>{can('item.manage') && <th />}</tr></thead>
           <tbody>
             {rows.map((i) => {
               const isLow = isLowStock(i);
               return (
                 <tr key={i.id} className={isLow ? 'bg-red-50/60' : ''}>
+                  <td className="py-1.5">{can('item.manage') ? <button onClick={() => onEdit(i)} aria-label={`Photo of ${i.name}`}><Thumb att={i.photo} alt={i.name} /></button> : <Thumb att={i.photo} alt={i.name} />}</td>
                   <td className="whitespace-nowrap text-slate-500">{i.code}</td>
                   <td className="font-medium text-navy-900">{i.name}{!i.active && <Badge>inactive</Badge>}</td>
                   <td className="whitespace-nowrap">{i.category}</td>
@@ -107,7 +110,7 @@ function TxnsTab() {
       </div>
       <div className="table-wrap">
         <table className="tbl">
-          <thead><tr><th>Ref</th><th>Date</th><th>Type</th><th>Item</th><th className="num">Qty</th><th>Details</th><th>Status</th><th>By</th></tr></thead>
+          <thead><tr><th>Ref</th><th>Date</th><th>Type</th><th>Item</th><th className="num">Qty</th><th className="num">Cost / unit</th><th className="num">Total</th><th>Details</th><th>Status</th><th>By</th></tr></thead>
           <tbody>
             {rows.map((t) => (
               <tr key={t.id}>
@@ -116,7 +119,9 @@ function TxnsTab() {
                 <td className="whitespace-nowrap">{TXN_LABELS[t.type]}{t.condition && <div className="text-xs text-slate-500">{t.condition}</div>}</td>
                 <td>{item(t.item_id)?.name}</td>
                 <td className="num">{t.type === 'OUT' ? '−' : t.type === 'ADJUST' && t.qty < 0 ? '−' : '+'}{num(Math.abs(t.qty))}</td>
-                <td className="text-xs text-slate-600">{[t.supplier, t.invoice_no, batch(t.batch_id), t.reason].filter(Boolean).join(' · ')}{t.decision_note && <div className="text-red-600">Note: {t.decision_note}</div>}</td>
+                <td className="num">{num(t.unit_cost)}</td>
+                <td className="num font-medium">{num(Math.abs(t.qty) * t.unit_cost)}</td>
+                <td className="text-xs text-slate-600">{[t.supplier, t.invoice_no, batch(t.batch_id), t.reason].filter(Boolean).join(' · ')}{t.attachment && <div><FileLink att={t.attachment} /></div>}{t.decision_note && <div className="text-red-600">Note: {t.decision_note}</div>}</td>
                 <td><StatusBadge status={t.status} /></td>
                 <td className="whitespace-nowrap text-xs">{name(t.created_by)}{t.decided_by && <div className="text-slate-500">✓ {name(t.decided_by)}</div>}</td>
               </tr>
@@ -145,21 +150,34 @@ function ItemPicker({ value, onChange, filter }: { value: string; onChange: (v: 
 function StockInModal({ onClose }: { onClose: () => void }) {
   const { data, actions } = useData();
   const toast = useToast();
-  const [f, setF] = useState({ item_id: '', qty: '', unit_cost: '', supplier: '', invoice_no: '', reason: '' });
+  const [f, setF] = useState({ item_id: '', qty: '', unit_cost: '', total: '', supplier: '', invoice_no: '', reason: '' });
+  const [invoice, setInvoice] = useState<File[]>([]);
   const { busy, error, run } = useSubmit();
   const it = data.items.find((i) => i.id === f.item_id);
+  const qty = Number(f.qty) || 0;
+  // Cost per unit and total stay in step: typing one recalculates the other.
+  const setQty = (v: string) => { const q = Number(v) || 0; const c = Number(f.unit_cost); setF({ ...f, qty: v, total: q && f.unit_cost !== '' ? String(Math.round(q * c * 100) / 100) : f.total }); };
+  const setCost = (v: string) => setF({ ...f, unit_cost: v, total: qty && v !== '' ? String(Math.round(qty * Number(v) * 100) / 100) : '' });
+  const setTotal = (v: string) => setF({ ...f, total: v, unit_cost: qty && v !== '' ? String(Math.round((Number(v) / qty) * 100) / 100) : f.unit_cost });
+  const pickItem = (id: string) => {
+    const x = data.items.find((i) => i.id === id);
+    const c = f.unit_cost !== '' ? f.unit_cost : x ? String(x.unit_cost) : '';
+    setF({ ...f, item_id: id, unit_cost: c, total: qty && c !== '' ? String(qty * Number(c)) : f.total });
+  };
   return (
-    <Modal open onClose={onClose} title="Stock in (purchase)" footer={<>
+    <Modal wide open onClose={onClose} title="Stock in (purchase)" footer={<>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
-      <Button busy={busy} onClick={() => run(async () => { const t = await actions.stockIn({ ...f, qty: Number(f.qty), unit_cost: Number(f.unit_cost || it?.unit_cost || 0) }); toast(`${t.ref} sent to HOD for approval`); onClose(); })}>Submit for approval</Button>
+      <Button busy={busy} onClick={() => run(async () => { const t = await actions.stockIn({ ...f, qty, unit_cost: Number(f.unit_cost || it?.unit_cost || 0) }, invoice[0] ?? null); toast(`${t.ref} sent to HOD for approval`); onClose(); })}>Submit for approval</Button>
     </>}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Item" required className="sm:col-span-2"><ItemPicker value={f.item_id} onChange={(v) => setF({ ...f, item_id: v })} /></Field>
-        <Field label={`Quantity${it ? ` (${it.unit})` : ''}`} required><input className="input" type="number" min="1" step="1" value={f.qty} onChange={(e) => setF({ ...f, qty: e.target.value })} /></Field>
-        <Field label="Unit cost (MMK)" hint={it ? `Current: ${num(it.unit_cost)}` : undefined}><input className="input" type="number" min="0" value={f.unit_cost} placeholder={it ? String(it.unit_cost) : ''} onChange={(e) => setF({ ...f, unit_cost: e.target.value })} /></Field>
-        <Field label="Supplier" required><input className="input" value={f.supplier} onChange={(e) => setF({ ...f, supplier: e.target.value })} /></Field>
-        <Field label="Supplier invoice no." required><input className="input" value={f.invoice_no} onChange={(e) => setF({ ...f, invoice_no: e.target.value })} /></Field>
-        <Field label="Note" className="sm:col-span-2"><input className="input" value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} /></Field>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Item" required className="sm:col-span-3"><div className="flex items-center gap-2"><Thumb att={it?.photo} alt={it?.name ?? ''} size={38} /><div className="flex-1"><ItemPicker value={f.item_id} onChange={pickItem} /></div></div></Field>
+        <Field label={`Quantity${it ? ` (${it.unit})` : ''}`} required><input className="input" type="number" min="1" step="1" value={f.qty} onChange={(e) => setQty(e.target.value)} /></Field>
+        <Field label="Cost per unit (MMK)" hint={it ? `Current: ${num(it.unit_cost)}` : undefined}><input className="input" type="number" min="0" step="any" value={f.unit_cost} onChange={(e) => setCost(e.target.value)} /></Field>
+        <Field label="Total cost (MMK)" hint="Qty × cost per unit"><input className="input font-medium" type="number" min="0" step="any" value={f.total} onChange={(e) => setTotal(e.target.value)} /></Field>
+        <Field label="Supplier" required className="sm:col-span-2"><input className="input" value={f.supplier} onChange={(e) => setF({ ...f, supplier: e.target.value })} /></Field>
+        <Field label="Invoice no." required><input className="input" value={f.invoice_no} onChange={(e) => setF({ ...f, invoice_no: e.target.value })} /></Field>
+        <Field label="Supplier invoice (scan / photo / PDF)" className="sm:col-span-3"><FilePicker files={invoice} onChange={setInvoice} accept={DOC_ACCEPT} label="Attach invoice…" /></Field>
+        <Field label="Note" className="sm:col-span-3"><input className="input" value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} /></Field>
       </div>
       <p className="mt-3 text-xs text-slate-500">The balance is updated when the L&D HOD approves.</p>
       <ErrorNote error={error} />
@@ -227,18 +245,32 @@ function ItemModal({ item, onClose }: { item?: Item; onClose: () => void }) {
     unit: item?.unit ?? 'Piece', unit_cost: String(item?.unit_cost ?? ''), min_level: String(item?.min_level ?? ''), active: item?.active ?? true,
   });
   const { busy, error, run } = useSubmit();
+  // undefined = keep current photo, null = remove, File = replace
+  const [photo, setPhoto] = useState<File | null | undefined>(undefined);
+  const preview = useMemo(() => (photo ? URL.createObjectURL(photo) : null), [photo]);
   return (
     <Modal open onClose={onClose} title={item ? `Edit ${item.name}` : 'New inventory item'} footer={<>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
-      <Button busy={busy} onClick={() => run(async () => { await actions.saveItem({ ...f, id: item?.id, unit_cost: Number(f.unit_cost), min_level: Number(f.min_level) }); toast('Item saved'); onClose(); })}>Save</Button>
+      <Button busy={busy} onClick={() => run(async () => { await actions.saveItem({ ...f, id: item?.id, unit_cost: Number(f.unit_cost), min_level: Number(f.min_level) }, photo); toast('Item saved'); onClose(); })}>Save</Button>
     </>}>
+      <div className="mb-4 flex items-center gap-4">
+        {preview ? <img src={preview} alt="New photo" className="h-24 w-24 rounded-lg border border-silver-200 object-cover" /> : <Thumb att={photo === null ? null : item?.photo} alt={item?.name ?? ''} size={96} />}
+        <div className="flex flex-col gap-2">
+          <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-silver-300 px-3 py-1.5 text-sm text-navy-800 hover:bg-silver-100">
+            <Camera className="h-4 w-4" />{item?.photo || photo ? 'Change photo' : 'Add photo'}
+            <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => { setPhoto(e.target.files?.[0] ?? undefined); e.target.value = ''; }} />
+          </label>
+          {(photo || (photo === undefined && item?.photo)) && <Button size="sm" variant="ghost" type="button" onClick={() => setPhoto(null)}><Trash2 className="h-4 w-4" />Remove photo</Button>}
+          <span className="text-xs text-slate-500">Resized automatically before upload.</span>
+        </div>
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Code" required><input className="input" value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })} /></Field>
         <Field label="Unit" required><input className="input" value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} /></Field>
         <Field label="Name" required className="sm:col-span-2"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         <Field label="Category"><select className="input" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value as Category })}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></Field>
         <Field label="Classification"><select className="input" value={f.classification} onChange={(e) => setF({ ...f, classification: e.target.value as Item['classification'] })}>{CLASSIFICATIONS.map((c) => <option key={c}>{c}</option>)}</select></Field>
-        <Field label="Unit cost (MMK)"><input className="input" type="number" min="0" value={f.unit_cost} onChange={(e) => setF({ ...f, unit_cost: e.target.value })} /></Field>
+        <Field label="Cost per unit (MMK)"><input className="input" type="number" min="0" value={f.unit_cost} onChange={(e) => setF({ ...f, unit_cost: e.target.value })} /></Field>
         <Field label="Minimum level" hint="Red alert at or below this"><input className="input" type="number" min="0" value={f.min_level} onChange={(e) => setF({ ...f, min_level: e.target.value })} /></Field>
         {item && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} />Active</label>}
       </div>

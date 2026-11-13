@@ -33,11 +33,23 @@ export interface Item {
   min_level: number;
   qty_on_hand: number;
   active: boolean;
+  /** Item photo (compressed JPEG). */
+  photo: Attachment | null;
   created_at: string;
 }
 
-export const PROGRAMS = ['Corporate', 'Agency', 'YCP', 'License'] as const;
+export const PROGRAMS = ['License', 'YCP', 'Product & Soft Skills', 'Corporate', 'Agency'] as const;
 export type Program = (typeof PROGRAMS)[number];
+
+export const LOCATIONS = ['YGN', 'MDY', 'TGI'] as const;
+export type Location = (typeof LOCATIONS)[number];
+export const LOCATION_LABELS: Record<Location, string> = { YGN: 'Yangon', MDY: 'Mandalay', TGI: 'Taunggyi' };
+
+/** Expense / budget categories. License classes are split by branch. */
+export const BUDGET_CATEGORIES = [
+  'YCP', 'License - YGN', 'License - MDY', 'License - TGI', 'Product & Soft Skills', 'Corporate', 'Agency', 'General',
+] as const;
+export type BudgetCategory = (typeof BUDGET_CATEGORIES)[number];
 export type BatchStatus = 'Planned' | 'Active' | 'Completed';
 
 export interface Batch {
@@ -45,6 +57,8 @@ export interface Batch {
   code: string;
   name: string;
   program: Program;
+  /** Branch (YGN / MDY / TGI). Used to split License classes for budgeting. */
+  location: Location | null;
   start_date: string;
   end_date: string;
   budget: number;
@@ -83,6 +97,8 @@ export interface StockTxn {
   decided_by: string | null;
   decided_at: string | null;
   decision_note: string | null;
+  /** Supplier invoice (stock in). */
+  attachment: Attachment | null;
 }
 
 export interface RequestLine {
@@ -95,7 +111,10 @@ export interface MaterialRequest {
   ref: string;
   batch_id: string;
   purpose: string;
+  remarks: string;
   lines: RequestLine[];
+  /** Supporting file, e.g. an Excel list of trainees / quantities. */
+  attachment: Attachment | null;
   status: ApprovalStatus;
   created_by: string;
   created_at: string;
@@ -157,6 +176,9 @@ export interface AssetLog {
 export const DEPOSIT_STATUSES = ['Held', 'Refund Request', 'Refunded', 'Forfeiture Request', 'Forfeited', 'Reversal Request'] as const;
 export type DepositStatus = (typeof DEPOSIT_STATUSES)[number];
 
+export const TRAINEE_TYPES = ['Internal', 'External'] as const;
+export type TraineeType = (typeof TRAINEE_TYPES)[number];
+
 export const FORFEIT_REASONS = ['Course Incomplete', 'Service Period Not Met'] as const;
 export type ForfeitReason = (typeof FORFEIT_REASONS)[number];
 
@@ -171,15 +193,23 @@ export interface Deposit {
   id: string;
   ref: string;
   trainee_name: string;
-  agent_code: string;
+  /** NRC number: the identifier for a trainee (one open deposit per NRC). */
+  nrc: string;
+  /** Agent code / employee ID, optional (external trainees may not have one). */
+  agent_code: string | null;
+  trainee_type: TraineeType;
   batch_id: string;
+  training_date: string;
   amount: number;
   payment_date: string;
   voucher_ref: string;
   status: DepositStatus;
   forfeit_reason: ForfeitReason | null;
   request_note: string | null;
+  /** Proof for the refund / forfeiture request (exam pass certificate or forfeiture notice). */
   attachment: Attachment | null;
+  /** Supporting documents: NRC copy, payment slip, contract, etc. */
+  documents: Attachment[];
   requested_by: string | null;
   requested_at: string | null;
   hod_approved_by: string | null;
@@ -208,13 +238,15 @@ export interface DepositStatusLog {
   created_at: string;
 }
 
-export const EXPENSE_CATEGORIES = ['Refreshments', 'Training Materials', 'Venue', 'Transport', 'Printing', 'Other'] as const;
+export const EXPENSE_TYPES = ['Refreshments', 'Training Materials', 'Venue', 'Transport', 'Printing', 'Trainer Fee', 'Other'] as const;
 
 export interface Expense {
   id: string;
   date: string;
   batch_id: string | null;
+  /** Expense type (venue, transport…). */
   category: string;
+  budget_category: BudgetCategory;
   description: string;
   amount: number;
   created_by: string;
@@ -224,6 +256,8 @@ export interface Expense {
 export interface Budget {
   id: string;
   fiscal_year: number;
+  /** 'Overall' for the department budget, otherwise a BudgetCategory. */
+  category: 'Overall' | BudgetCategory;
   amount: number;
   note: string;
   created_at: string;

@@ -98,7 +98,7 @@ function ActionModal({ kind, deposit: d, onClose, run }: {
         onClick={() => submit(async () => { await run(d.id, action(), file); toast(`${d.ref}: ${m.button.toLowerCase()} done`); onClose(); })}>{m.button}</Button>
     </>}>
       <div className="mb-4 rounded-lg bg-silver-100 px-3 py-2 text-sm">
-        <div className="font-medium text-navy-900">{d.ref} · {d.trainee_name} ({d.agent_code})</div>
+        <div className="font-medium text-navy-900">{d.ref} · {d.trainee_name} · NRC {d.nrc}</div>
         <div className="text-slate-600">{mmk(d.amount)} · voucher {d.voucher_ref}</div>
       </div>
       <p className="mb-4 text-sm text-slate-600">{m.explain}</p>

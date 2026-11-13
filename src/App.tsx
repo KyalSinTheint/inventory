@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
-  BarChart3, Bell, Boxes, CheckSquare, ClipboardList, FileText, GraduationCap, LayoutDashboard, LogOut, Menu, PiggyBank,
+  ArrowLeft, BarChart3, Bell, Boxes, CheckSquare, ClipboardList, FileText, GraduationCap, LayoutDashboard, LogOut, Menu, PiggyBank,
   RefreshCw, ScrollText, Settings as SettingsIcon, Users, Wallet, Wrench, X,
 } from 'lucide-react';
 import { StoreProvider, useStore } from './lib/store';
@@ -31,6 +31,7 @@ function Shell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const loc = useLocation();
+  const navigate = useNavigate();
   const counts = useMemo(() => (data && user ? approvalCounts(data, user) : null), [data, user]);
   const alertCount = useMemo(
     () => (data ? lowStockItems(data).length + retentionAlerts(data, settings, today()).length : 0),
@@ -97,6 +98,12 @@ function Shell({ children }: { children: ReactNode }) {
       )}
       <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-silver-200 bg-white/95 px-4 py-2.5 backdrop-blur sm:px-6">
         <button className="rounded-md p-1.5 text-navy-900 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu"><Menu className="h-5 w-5" /></button>
+        {loc.pathname !== '/' && (
+          <button className="flex items-center gap-1 rounded-md px-2 py-1.5 text-sm font-medium text-navy-800 hover:bg-silver-100" aria-label="Back"
+            onClick={() => (window.history.state?.idx > 0 ? navigate(-1) : navigate('/'))}>
+            <ArrowLeft className="h-4 w-4" /><span className="hidden sm:inline">Back</span>
+          </button>
+        )}
         <div className="flex-1 truncate text-sm text-slate-500">{db.mode === 'demo' && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">DEMO</span>}</div>
         <button title="Reload data" aria-label="Reload data" className="rounded-md p-2 text-slate-500 hover:bg-silver-100"
           onClick={async () => { setRefreshing(true); await refresh(); setRefreshing(false); }}>

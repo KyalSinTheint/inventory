@@ -86,3 +86,17 @@ export function downloadJson(filename: string, data: unknown) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+
+export interface Sheet { name: string; rows: (string | number)[][]; widths?: number[] }
+
+/** Several sheets in one Excel workbook. */
+export async function exportWorkbook(filename: string, sheets: Sheet[]) {
+  const XLSX = await import('xlsx');
+  const wb = XLSX.utils.book_new();
+  for (const sh of sheets) {
+    const ws = XLSX.utils.aoa_to_sheet(sh.rows);
+    ws['!cols'] = (sh.widths ?? sh.rows[0]?.map((_, i) => Math.min(44, Math.max(10, ...sh.rows.slice(0, 200).map((r) => String(r[i] ?? '').length + 2))))).map((wch) => ({ wch }));
+    XLSX.utils.book_append_sheet(wb, ws, sh.name.slice(0, 31).replace(/[\\/?*[\]:]/g, ' '));
+  }
+  XLSX.writeFile(wb, `${filename}.xlsx`);
+}

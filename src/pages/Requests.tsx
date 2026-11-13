@@ -4,6 +4,8 @@ import { useData } from '../lib/store';
 import { CATEGORIES, type MaterialRequest, type RequestLine } from '../lib/types';
 import { requestValue } from '../lib/logic';
 import { dateTime, mmk, num } from '../lib/format';
+import { FileLink, FilePicker } from '../components/files';
+import { EXCEL_ACCEPT } from '../lib/files';
 import { Button, Empty, ErrorNote, Field, Modal, PageHeader, StatusBadge, useSubmit, useToast } from '../components/ui';
 
 export default function RequestsPage() {
@@ -34,7 +36,9 @@ export default function RequestsPage() {
                   {r.status === 'Rejected' && can('request.create') && <Button size="sm" variant="secondary" className="mt-1" onClick={() => setEdit(r)}><Pencil className="h-3.5 w-3.5" />Revise & resubmit</Button>}
                 </div>
               </div>
-              {r.purpose && <p className="mt-2 text-sm text-slate-700">{r.purpose}</p>}
+              {r.purpose && <p className="mt-2 text-sm font-medium text-slate-700">{r.purpose}</p>}
+              {r.remarks && <p className="mt-1 whitespace-pre-line text-sm text-slate-600">{r.remarks}</p>}
+              {r.attachment && <div className="mt-1 text-sm"><FileLink att={r.attachment} /></div>}
               {r.decision_note && <p className={`mt-2 rounded-md px-2 py-1 text-sm ${r.status === 'Rejected' ? 'bg-red-50 text-red-700' : 'bg-silver-100 text-slate-700'}`}>HOD: {r.decision_note}</p>}
               <ul className="mt-2 flex flex-wrap gap-1.5">
                 {r.lines.map((l, i) => <li key={i} className="rounded-md bg-silver-100 px-2 py-0.5 text-xs">{item(l.item_id)?.name} × {num(l.qty)}</li>)}
@@ -55,6 +59,9 @@ function RequestModal({ request, onClose }: { request?: MaterialRequest; onClose
   const batches = data.batches.filter((b) => b.status !== 'Completed' || b.id === request?.batch_id);
   const [batchId, setBatchId] = useState(request?.batch_id ?? batches[0]?.id ?? '');
   const [purpose, setPurpose] = useState(request?.purpose ?? '');
+  const [remarks, setRemarks] = useState(request?.remarks ?? '');
+  const [file, setFile] = useState<File[]>([]);
+  const [removeFile, setRemoveFile] = useState(false);
   const [lines, setLines] = useState<{ item_id: string; qty: string }[]>(request?.lines.map((l) => ({ item_id: l.item_id, qty: String(l.qty) })) ?? [{ item_id: '', qty: '' }]);
   const { busy, error, run } = useSubmit();
   const item = (id: string) => data.items.find((i) => i.id === id);
@@ -64,13 +71,20 @@ function RequestModal({ request, onClose }: { request?: MaterialRequest; onClose
       <span className="mr-auto self-center text-sm text-slate-600">Estimated value: <b>{mmk(total)}</b></span>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
       <Button busy={busy} onClick={() => run(async () => {
-        const r = await actions.saveRequest({ id: request?.id, batch_id: batchId, purpose, lines: lines.map<RequestLine>((l) => ({ item_id: l.item_id, qty: Number(l.qty) })) });
+        const r = await actions.saveRequest({ id: request?.id, batch_id: batchId, purpose, remarks, lines: lines.map<RequestLine>((l) => ({ item_id: l.item_id, qty: Number(l.qty) })) },
+          file[0] ?? (removeFile ? null : undefined));
         toast(`${r.ref} sent to HOD for approval`); onClose();
       })}>Submit for approval</Button>
     </>}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Training batch" required><select className="input" value={batchId} onChange={(e) => setBatchId(e.target.value)}>{batches.map((b) => <option key={b.id} value={b.id}>{b.code} · {b.name}</option>)}</select></Field>
         <Field label="Purpose"><input className="input" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Day 1–3 refreshments for 30 trainees" /></Field>
+        <Field label="Remarks" className="sm:col-span-2"><textarea className="input min-h-24" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Details for the HOD: number of trainees, delivery date, sizes, special instructions…" /></Field>
+        <Field label="Attachment (Excel list, etc.)" className="sm:col-span-2" hint="Excel, CSV, PDF or photo">
+          {request?.attachment && !removeFile && !file.length ? (
+            <div className="flex items-center gap-3 text-sm"><FileLink att={request.attachment} /><Button size="sm" variant="ghost" type="button" onClick={() => setRemoveFile(true)}>Remove</Button></div>
+          ) : <FilePicker files={file} onChange={setFile} accept={EXCEL_ACCEPT} label="Attach Excel file…" />}
+        </Field>
       </div>
       <div className="mt-4 space-y-2">
         {lines.map((l, idx) => {

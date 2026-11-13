@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { buildSeed } from '../lib/seed';
+import { STORE_KEY } from '../lib/db';
 import { ROLE_LABELS } from '../lib/types';
 import { Button, ErrorNote, Field, useSubmit } from '../components/ui';
 
@@ -14,7 +15,7 @@ export default function LoginPage({ loadError }: { loadError: string | null }) {
   const [done, setDone] = useState<string | null>(null);
   const { busy, error, run } = useSubmit();
   const demoUsers = db.mode === 'demo' ? (() => {
-    try { return JSON.parse(localStorage.getItem('ld-portal-data-v1') ?? 'null')?.profiles ?? buildSeed().profiles; } catch { return buildSeed().profiles; }
+    try { return JSON.parse(localStorage.getItem(STORE_KEY) ?? 'null')?.profiles ?? buildSeed().profiles; } catch { return buildSeed().profiles; }
   })().filter((p: { active: boolean }) => p.active) : [];
 
   return (

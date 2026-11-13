@@ -1,6 +1,6 @@
 // Pure business rules. No React and no storage here, so they can be unit tested.
 import type {
-  ApprovalStatus, Batch, Deposit, DepositStatus, Expense, ForfeitReason, Item, MaterialRequest,
+  ApprovalStatus, Batch, BudgetCategory, Deposit, DepositStatus, Expense, ForfeitReason, Item, MaterialRequest,
   RequestLine, Role, StockTxn,
 } from './types';
 
@@ -200,23 +200,38 @@ export function depositTransition(d: Deposit, a: DepositAction, role: Role, user
   }
 }
 
+// ---------------------------------------------------------------- NRC
+const MM_DIGITS = '၀၁၂၃၄၅၆၇၈၉';
+/** Canonical form for comparing NRC numbers: no spaces, Myanmar digits → 0-9, Latin letters upper-case. */
+export function normalizeNrc(nrc: string): string {
+  return nrc.replace(/\s+/g, '').replace(/[၀-၉]/g, (c) => String(MM_DIGITS.indexOf(c))).toUpperCase();
+}
+
+/** Myanmar NRC, in English (12/MaYaKa(N)123456) or Myanmar script (၁၂/မရက(နိုင်)၁၂၃၄၅၆). */
+export function isValidNrc(nrc: string): boolean {
+  return /^([1-9]|1[0-4])\/[^/()]{2,12}\([^()]{1,8}\)\d{6}$/.test(normalizeNrc(nrc));
+}
+
 /** "System auto check" run when a deposit is registered. */
 export function validateNewDeposit(
-  input: Pick<Deposit, 'trainee_name' | 'agent_code' | 'batch_id' | 'amount' | 'payment_date' | 'voucher_ref'>,
+  input: Pick<Deposit, 'trainee_name' | 'nrc' | 'trainee_type' | 'batch_id' | 'training_date' | 'amount' | 'payment_date' | 'voucher_ref'>,
   existing: Deposit[], batches: Batch[],
 ): void {
-  if (!input.trainee_name.trim()) throw new RuleError('Trainee / agent name is required.');
-  if (!input.agent_code.trim()) throw new RuleError('Agent code / employee ID is required.');
+  if (!input.trainee_name.trim()) throw new RuleError('Trainee name is required.');
+  if (!input.nrc.trim()) throw new RuleError('NRC number is required.');
+  if (!isValidNrc(input.nrc)) throw new RuleError('NRC format looks wrong. Example: 12/MaYaKa(N)123456 or ၁၂/မရက(နိုင်)၁၂၃၄၅၆');
+  if (input.trainee_type !== 'Internal' && input.trainee_type !== 'External') throw new RuleError('Choose Internal or External.');
   const b = batches.find((x) => x.id === input.batch_id);
   if (!b) throw new RuleError('Choose a license course batch.');
   if (b.program !== 'License' || b.status === 'Completed') throw new RuleError('The batch must be an active License class.');
+  if (!input.training_date) throw new RuleError('Training date is required.');
   if (!(input.amount > 0)) throw new RuleError('Deposit amount must be above zero.');
   if (!input.payment_date) throw new RuleError('Payment date is required.');
   if (input.payment_date > new Date().toISOString().slice(0, 10)) throw new RuleError('Payment date cannot be in the future.');
   if (!input.voucher_ref.trim()) throw new RuleError('Voucher reference is required.');
-  const code = input.agent_code.trim().toLowerCase();
-  const dup = existing.find((d) => d.agent_code.trim().toLowerCase() === code && d.status !== 'Refunded' && d.status !== 'Forfeited');
-  if (dup) throw new RuleError(`Agent code ${input.agent_code} already has an open deposit (${dup.ref}).`);
+  const nrc = normalizeNrc(input.nrc);
+  const dup = existing.find((d) => normalizeNrc(d.nrc) === nrc && d.status !== 'Refunded' && d.status !== 'Forfeited');
+  if (dup) throw new RuleError(`NRC ${input.nrc} already has an open deposit (${dup.ref}).`);
   const v = input.voucher_ref.trim().toLowerCase();
   const vdup = existing.find((d) => d.voucher_ref.trim().toLowerCase() === v);
   if (vdup) throw new RuleError(`Voucher ${input.voucher_ref} is already recorded on ${vdup.ref}.`);
@@ -280,7 +295,7 @@ export function batchActual(batchId: string, txns: StockTxn[], expenses: Expense
 export function yearActual(year: number, txns: StockTxn[], expenses: Expense[]): { purchases: number; expenses: number; total: number } {
   const y = String(year);
   const purchases = txns
-    .filter((t) => t.type === 'IN' && t.status === 'Approved' && t.created_at.startsWith(y) && t.supplier !== 'Opening balance')
+    .filter((t) => t.type === 'IN' && t.status === 'Approved' && effectiveDate(t).startsWith(y) && t.supplier !== 'Opening balance')
     .reduce((s, t) => s + txnValue(t), 0);
   const ex = expenses.filter((e) => e.date.startsWith(y)).reduce((s, e) => s + e.amount, 0);
   return { purchases, expenses: ex, total: purchases + ex };
@@ -302,4 +317,56 @@ export function pendingCount(statuses: { status: ApprovalStatus }[]): number {
 
 export function requestValue(r: MaterialRequest, items: Item[]): number {
   return r.lines.reduce((s, l) => s + l.qty * (items.find((i) => i.id === l.item_id)?.unit_cost ?? 0), 0);
+}
+
+// ---------------------------------------------------------------- categories & months
+export function budgetCategory(b: Pick<Batch, 'program' | 'location'> | undefined | null): BudgetCategory {
+  if (!b) return 'General';
+  if (b.program === 'License') return b.location ? (`License - ${b.location}` as BudgetCategory) : 'General';
+  return b.program;
+}
+
+const effectiveDate = (t: StockTxn) => (t.decided_at ?? t.created_at).slice(0, 10);
+
+export interface CategoryActual { materials: number; expenses: number; total: number }
+
+/** Spend per budget category in a year: materials issued to its batches (net of good returns) + expenses tagged to it. */
+export function categoryActuals(year: number, txns: StockTxn[], expenses: Expense[], batches: Batch[]): Map<BudgetCategory, CategoryActual> {
+  const y = String(year);
+  const m = new Map<BudgetCategory, CategoryActual>();
+  const add = (c: BudgetCategory, k: 'materials' | 'expenses', v: number) => {
+    const cur = m.get(c) ?? { materials: 0, expenses: 0, total: 0 };
+    cur[k] += v; cur.total += v; m.set(c, cur);
+  };
+  const batchCat = new Map(batches.map((b) => [b.id, budgetCategory(b)]));
+  for (const t of txns) {
+    if (t.status !== 'Approved' || !t.batch_id || !effectiveDate(t).startsWith(y)) continue;
+    const c = batchCat.get(t.batch_id) ?? 'General';
+    if (t.type === 'OUT') add(c, 'materials', txnValue(t));
+    if (t.type === 'RETURN' && t.condition === 'Good') add(c, 'materials', -txnValue(t));
+  }
+  for (const e of expenses) if (e.date.startsWith(y)) add(e.budget_category ?? 'General', 'expenses', e.amount);
+  return m;
+}
+
+export interface MonthSpend { month: string; purchases: number; issued: number; expenses: number; total: number; cumulative: number }
+
+/** Department spend per month (purchases + expenses), plus materials issued to classes for reference. */
+export function monthlySpend(year: number, txns: StockTxn[], expenses: Expense[]): MonthSpend[] {
+  const rows: MonthSpend[] = Array.from({ length: 12 }, (_, i) => ({
+    month: `${year}-${String(i + 1).padStart(2, '0')}`, purchases: 0, issued: 0, expenses: 0, total: 0, cumulative: 0,
+  }));
+  const at = (d: string) => (d.startsWith(String(year)) ? rows[Number(d.slice(5, 7)) - 1] : null);
+  for (const t of txns) {
+    if (t.status !== 'Approved') continue;
+    const r = at(effectiveDate(t));
+    if (!r) continue;
+    if (t.type === 'IN' && t.supplier !== 'Opening balance') r.purchases += txnValue(t);
+    if (t.type === 'OUT') r.issued += txnValue(t);
+    if (t.type === 'RETURN' && t.condition === 'Good') r.issued -= txnValue(t);
+  }
+  for (const e of expenses) { const r = at(e.date); if (r) r.expenses += e.amount; }
+  let cum = 0;
+  for (const r of rows) { r.total = r.purchases + r.expenses; cum += r.total; r.cumulative = cum; }
+  return rows;
 }

@@ -31,7 +31,7 @@ export interface DataAdapter {
 }
 
 // ------------------------------------------------------------------- demo
-const STORE_KEY = 'ld-portal-data-v1';
+export const STORE_KEY = 'ld-portal-data-v2';
 const USER_KEY = 'ld-portal-user-v1';
 const MAX_DEMO_FILE = 1_500_000;
 

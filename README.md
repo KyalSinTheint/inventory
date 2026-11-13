@@ -32,8 +32,9 @@ with real data before going live.
 ## Production setup (Supabase)
 
 1. Create a Supabase project.
-2. In **SQL Editor**, run `supabase/migrations/20261112000000_ld_portal.sql`. It creates the tables, rules,
-   triggers, Row Level Security policies and the private `attachments` storage bucket. It is safe to run again.
+2. In **SQL Editor**, run the files in `supabase/migrations/` **in filename order**:
+   `20261112000000_ld_portal.sql` (tables, rules, triggers, Row Level Security, private `attachments` bucket), then
+   `20261113000000_nrc_documents_categories.sql` (NRC, documents, photos, branches, category budgets). Both are safe to run again.
 3. Copy `.env.example` to `.env` and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
    (Project Settings → API).
 4. `npm run build` and deploy `dist/` (a `vercel.json` is included; any static host works).
@@ -60,6 +61,18 @@ with real data before going live.
 | 13 Business rules 1–4 | Enforced in `src/lib/logic.ts` *and* in the database (see below) |
 | 14 Data fields (DEP-2026-0001 etc.) | Deposit form and record |
 
+### Update (v2)
+
+| Area | Change |
+|---|---|
+| Dashboard | Categories bar (one tile per inventory category, opens Inventory filtered); **Back** arrow in the header on every page except the Dashboard |
+| License deposits | Trainees identified by **NRC** (English or Myanmar script, one open deposit per NRC); agent code optional; **Internal / External**; **training date** (defaults to the batch start); **documents** attached at registration or later (append-only, until the deposit is closed); **By batch** view; HOD/Admin can create a License batch from the form |
+| Inventory | Item **photos** (resized before upload); stock in shows **cost per unit × qty = total** (either one can be entered); supplier **invoice attachment** |
+| Material requests | **Remarks** box and an **Excel / file attachment** |
+| Budget | **Monthly preview** (chart + table, click a month to filter expenses); **category expense** for YCP, License YGN / MDY / TGI, Product & Soft Skills (plus Corporate, Agency, General); category budgets; **Export Excel** workbook (Summary, Monthly, By category, Category by month, Batches, Expenses) |
+
+Batches now carry a branch (YGN / MDY / TGI); a License batch's budget category is *License – branch*.
+
 ### Deposit lifecycle
 
 ```
@@ -77,8 +90,8 @@ Rejecting any request sends the deposit back to Held (or back to its closed stat
 * **Maker-checker:** nobody can approve something they submitted.
 * **Retention alert:** a Held deposit is flagged from month 11 and marked *term ended* at month 12.
   Both are configurable in **Settings**.
-* Registration checks for missing fields, a License batch that is not completed, an existing open deposit for
-  the same agent code, and duplicate vouchers.
+* Registration checks for missing fields, a valid NRC, a License batch that is not completed, an existing open
+  deposit for the same NRC (spacing, case and Myanmar/English digits ignored), and duplicate vouchers.
 
 ### Where the rules are enforced
 
@@ -99,8 +112,8 @@ again**, so a modified client cannot bypass them:
 * **Finance role vs. refund approval.** Section 6 calls Finance read-only, while section 10 lists
   "L&D HOD & Finance" as refund approvers. Finance therefore has one write action: confirming that a refund
   the HOD already approved has been paid, with the payment voucher number.
-* **"Agent code: unique"** is read as one *open* deposit per agent code. An agent who finished a past class can
-  register for a new one.
+* **Trainee identifier** is the NRC (changed from agent code at the L&D team's request): one *open* deposit per NRC,
+  so someone who finished a past class can register for a new one.
 * **Stock returns** are recorded straight away and need no approval (they are not in the approval matrix). Items in good
   condition go back on the shelf; damaged and lost ones are logged only. Write-offs go through an HOD-approved adjustment.
 * **Physical count** variances become adjustment requests for the HOD to approve, not automatic corrections.

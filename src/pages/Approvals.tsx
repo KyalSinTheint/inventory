@@ -7,6 +7,7 @@ import { requestValue, txnValue } from '../lib/logic';
 import { dateTime, mmk, num } from '../lib/format';
 import { Badge, Button, Card, Empty, ErrorNote, Field, Modal, PageHeader, StatusBadge, useSubmit, useToast } from '../components/ui';
 import { DepositActions } from '../components/DepositActions';
+import { FileLink } from '../components/files';
 
 export default function ApprovalsPage() {
   const { data, user, name, actions } = useData();
@@ -33,10 +34,10 @@ export default function ApprovalsPage() {
                 <li key={d.id} className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2"><Link to={`/deposits/${d.id}`} className="font-medium text-navy-800 hover:underline">{d.ref}</Link><StatusBadge status={d.status} />{d.forfeit_reason && <Badge>{d.forfeit_reason}</Badge>}</div>
-                    <div className="text-sm">{d.trainee_name} ({d.agent_code}) · <b>{mmk(d.amount)}</b> · {batch(d.batch_id)?.code}</div>
+                    <div className="text-sm">{d.trainee_name} · NRC {d.nrc} · {d.trainee_type} · <b>{mmk(d.amount)}</b> · {batch(d.batch_id)?.code}</div>
                     <div className="text-xs text-slate-500">Requested by {name(d.requested_by)} · {dateTime(d.requested_at)}{d.hod_approved_by && ` · HOD approved by ${name(d.hod_approved_by)}`}</div>
                     {(d.request_note || d.reversal_reason) && <div className="mt-1 text-xs text-slate-600">{d.status === 'Reversal Request' ? `Reversal reason: ${d.reversal_reason}` : d.request_note}</div>}
-                    {d.attachment && <div className="mt-1 text-xs text-slate-600">📎 {d.attachment.name}</div>}
+                    {d.attachment && <div className="mt-1 text-xs"><FileLink att={d.attachment} /></div>}
                   </div>
                   <DepositActions deposit={d} compact />
                 </li>
@@ -57,6 +58,8 @@ export default function ApprovalsPage() {
                         <div className="font-medium text-navy-800">{r.ref} · {batch(r.batch_id)?.code} <span className="font-normal text-slate-500">({mmk(requestValue(r, data.items))})</span></div>
                         <div className="text-xs text-slate-500">By {name(r.created_by)} · {dateTime(r.created_at)}</div>
                         {r.purpose && <div className="mt-1 text-sm">{r.purpose}</div>}
+                        {r.remarks && <div className="mt-1 whitespace-pre-line text-xs text-slate-600">{r.remarks}</div>}
+                        {r.attachment && <div className="mt-1 text-xs"><FileLink att={r.attachment} /></div>}
                         <ul className="mt-1.5 flex flex-wrap gap-1.5">
                           {r.lines.map((l, i) => { const it = item(l.item_id); const bad = l.qty > (it?.qty_on_hand ?? 0); return <li key={i} className={`rounded-md px-2 py-0.5 text-xs ${bad ? 'bg-red-50 text-red-700' : 'bg-silver-100'}`}>{it?.name} × {num(l.qty)} <span className="text-slate-500">({num(it?.qty_on_hand ?? 0)} on hand)</span></li>; })}
                         </ul>
@@ -83,6 +86,8 @@ export default function ApprovalsPage() {
                         <div className="font-medium text-navy-800">{t.ref} · {TXN_LABELS[t.type]}</div>
                         <div className="text-sm">{it?.name}: <b>{t.qty > 0 ? '+' : ''}{num(t.qty)}</b> {it?.unit} (on hand {num(it?.qty_on_hand ?? 0)}) · {mmk(txnValue(t))}</div>
                         <div className="text-xs text-slate-500">{[t.supplier, t.invoice_no, t.reason].filter(Boolean).join(' · ')} · by {name(t.created_by)} {dateTime(t.created_at)}</div>
+                        {t.type === 'IN' && <div className="text-xs">{num(t.qty)} × {num(t.unit_cost)} = <b>{mmk(txnValue(t))}</b></div>}
+                        {t.attachment ? <div className="mt-0.5 text-xs"><FileLink att={t.attachment} /></div> : t.type === 'IN' && <div className="mt-0.5 text-xs text-amber-700">No invoice attached</div>}
                       </div>
                       <Decide label="transaction" onDecide={(ok, note) => actions.decideTxn(t.id, ok, note)} />
                     </li>

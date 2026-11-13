@@ -1,5 +1,5 @@
 import type { ReportSpec } from '../lib/export';
-import { batchActual, depositTotals, stockDelta, variancePct } from '../lib/logic';
+import { batchActual, budgetCategory, depositTotals, stockDelta, variancePct } from '../lib/logic';
 import type { Asset, Batch, DataSet, Deposit, Item } from '../lib/types';
 import { date, mmk } from '../lib/format';
 
@@ -44,13 +44,14 @@ export function stockMovementReport(data: DataSet, from: string, to: string, by:
 
 export function depositMasterReport(data: DataSet, rows: Deposit[], by: string): ReportSpec<Deposit> {
   const t = depositTotals(rows);
-  const batch = (id: string) => data.batches.find((b) => b.id === id)?.code ?? '';
+  const batch = (id: string) => { const b = data.batches.find((x) => x.id === id); return b ? `${b.code}${b.location ? ` (${b.location})` : ''}` : ''; };
   return {
     title: 'License Class Deposit Master Report', filename: `deposit-master_${stamp()}`, generatedBy: by, rows,
     summary: [['Deposits', String(rows.length)], ['Held (incl. pending requests)', mmk(t.held)], ['Refunded', mmk(t.refunded)], ['Forfeited', mmk(t.forfeited)]],
     columns: [
-      { header: 'Deposit ID', value: (d) => d.ref }, { header: 'Trainee name', value: (d) => d.trainee_name }, { header: 'Agent code', value: (d) => d.agent_code },
-      { header: 'Batch', value: (d) => batch(d.batch_id) }, { header: 'Amount (MMK)', value: (d) => d.amount, numeric: true },
+      { header: 'Deposit ID', value: (d) => d.ref }, { header: 'Trainee name', value: (d) => d.trainee_name }, { header: 'NRC', value: (d) => d.nrc },
+      { header: 'Type', value: (d) => d.trainee_type }, { header: 'Agent code', value: (d) => d.agent_code ?? '' },
+      { header: 'Batch', value: (d) => batch(d.batch_id) }, { header: 'Training date', value: (d) => d.training_date }, { header: 'Amount (MMK)', value: (d) => d.amount, numeric: true },
       { header: 'Payment date', value: (d) => d.payment_date }, { header: 'Voucher', value: (d) => d.voucher_ref }, { header: 'Status', value: (d) => d.status },
       { header: 'Forfeit reason', value: (d) => d.forfeit_reason ?? '' }, { header: 'Closed', value: (d) => d.closed_at?.slice(0, 10) ?? '' },
     ],
@@ -61,13 +62,14 @@ export function forfeitureReport(data: DataSet, by: string, from: string, to: st
   const rows = data.deposits.filter((d) => d.status === 'Forfeited' && (d.closed_at ?? '').slice(0, 10) >= from && (d.closed_at ?? '').slice(0, 10) <= to);
   const sum = (r: string) => rows.filter((d) => d.forfeit_reason === r).reduce((s, d) => s + d.amount, 0);
   const name = (id: string | null) => data.profiles.find((p) => p.id === id)?.name ?? '';
-  const batch = (id: string) => data.batches.find((b) => b.id === id)?.code ?? '';
+  const batch = (id: string) => { const b = data.batches.find((x) => x.id === id); return b ? `${b.code}${b.location ? ` (${b.location})` : ''}` : ''; };
   return {
     title: 'Deposit Forfeiture Detailed Statement', subtitle: `Forfeitures approved ${date(from)} – ${date(to)}`, filename: `forfeiture-statement_${from}_${to}`, generatedBy: by, rows,
     summary: [['Course Incomplete Forfeited Ledger', mmk(sum('Course Incomplete'))], ['Service Term Not Met Forfeited Ledger', mmk(sum('Service Period Not Met'))],
       ['Total transferred to non-refundable revenue', mmk(rows.reduce((s, d) => s + d.amount, 0))]],
     columns: [
-      { header: 'Deposit ID', value: (d) => d.ref }, { header: 'Trainee', value: (d) => d.trainee_name }, { header: 'Agent code', value: (d) => d.agent_code },
+      { header: 'Deposit ID', value: (d) => d.ref }, { header: 'Trainee', value: (d) => d.trainee_name }, { header: 'NRC', value: (d) => d.nrc },
+      { header: 'Type', value: (d) => d.trainee_type },
       { header: 'Batch', value: (d) => batch(d.batch_id) }, { header: 'Amount (MMK)', value: (d) => d.amount, numeric: true },
       { header: 'Reason', value: (d) => d.forfeit_reason ?? '' }, { header: 'Evidence note', value: (d) => d.request_note ?? '' },
       { header: 'Requested by', value: (d) => name(d.requested_by) }, { header: 'Approved by (HOD)', value: (d) => name(d.hod_approved_by) },
@@ -94,7 +96,7 @@ export function varianceReport(data: DataSet, by: string): ReportSpec<VarianceRo
     title: 'Training Batch Expense & Budget Variance Report', filename: `batch-variance_${stamp()}`, generatedBy: by, rows,
     summary: [['Total batch budgets', mmk(budget)], ['Total actual spend', mmk(actual)], ['Variance', `${mmk(actual - budget)} (${budget ? (((actual - budget) / budget) * 100).toFixed(1) : '—'}%)`]],
     columns: [
-      { header: 'Batch', value: (r) => r.batch.code }, { header: 'Program', value: (r) => r.batch.program }, { header: 'Status', value: (r) => r.batch.status },
+      { header: 'Batch', value: (r) => r.batch.code }, { header: 'Category', value: (r) => budgetCategory(r.batch) }, { header: 'Status', value: (r) => r.batch.status },
       { header: 'Budget', value: (r) => r.batch.budget, numeric: true }, { header: 'Materials', value: (r) => r.materials, numeric: true },
       { header: 'Other expenses', value: (r) => r.expenses, numeric: true }, { header: 'Actual', value: (r) => r.actual, numeric: true },
       { header: 'Variance', value: (r) => r.variance, numeric: true }, { header: 'Variance %', value: (r) => (r.pct === null ? '' : `${r.pct.toFixed(1)}%`), numeric: true },

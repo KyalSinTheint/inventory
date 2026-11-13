@@ -1,11 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createAdapter, type DataAdapter } from './db';
+import { compressImage } from './files';
 import {
-  applyDelta, can, checkAvailability, depositTransition, nextRef, RuleError, stockDelta, validateLines, validateNewDeposit,
+  applyDelta, budgetCategory, can, checkAvailability, depositTransition, isValidNrc, nextRef, normalizeNrc, RuleError, stockDelta, validateLines, validateNewDeposit,
   type DepositAction, type Permission,
 } from './logic';
 import type {
-  Asset, AssetAction, AssetCondition, Batch, Budget, CountLine, DataSet, Deposit, Expense, Item, PhysicalCount,
+  Asset, AssetAction, AssetCondition, Attachment, Batch, Budget, CountLine, DataSet, Deposit, Expense, Item, MaterialRequest, PhysicalCount,
   Profile, RequestLine, ReturnCondition, Role, Settings, StockTxn, TableName, Tables,
 } from './types';
 
@@ -94,7 +95,7 @@ function makeActions(
     return it;
   };
   const baseTxn = (): Omit<StockTxn, 'ref' | 'type' | 'item_id' | 'qty' | 'unit_cost'> => ({
-    id: uid(), batch_id: null, request_id: null, supplier: null, invoice_no: null, condition: null, reason: null,
+    id: uid(), batch_id: null, request_id: null, supplier: null, invoice_no: null, condition: null, reason: null, attachment: null,
     status: 'Pending', created_by: get().user.id, created_at: nowIso(), decided_by: null, decided_at: null, decision_note: null,
   });
   const notSelf = (createdBy: string) => {
@@ -103,19 +104,21 @@ function makeActions(
 
   return {
     // ------------------------------------------------------------ master data
-    async saveItem(input: Omit<Item, 'id' | 'created_at' | 'qty_on_hand'> & { id?: string }) {
+    /** photo: a File to upload, null to remove the photo, undefined to keep it. */
+    async saveItem(input: Omit<Item, 'id' | 'created_at' | 'qty_on_hand' | 'photo'> & { id?: string }, photo?: File | null) {
       need('item.manage');
       if (!input.name.trim() || !input.code.trim()) throw new RuleError('Item code and name are required.');
       if (input.unit_cost < 0 || input.min_level < 0) throw new RuleError('Cost and minimum level cannot be negative.');
       const dup = get().data.items.find((i) => i.code.toLowerCase() === input.code.trim().toLowerCase() && i.id !== input.id);
       if (dup) throw new RuleError(`Item code ${input.code} is already used by ${dup.name}.`);
+      const photoPatch: Partial<Item> = photo === undefined ? {} : { photo: photo ? await db.upload(await compressImage(photo)) : null };
       if (input.id) {
         const { id, ...patch } = input;
-        const saved = await update('items', id, { ...patch, code: patch.code.trim(), name: patch.name.trim() });
+        const saved = await update('items', id, { ...patch, ...photoPatch, code: patch.code.trim(), name: patch.name.trim() });
         await audit('Update', 'item', id, `${saved.code} ${saved.name}`);
         return saved;
       }
-      const saved = await insert('items', { ...input, id: uid(), code: input.code.trim(), name: input.name.trim(), qty_on_hand: 0, created_at: nowIso() });
+      const saved = await insert('items', { ...input, photo: null, ...photoPatch, id: uid(), code: input.code.trim(), name: input.name.trim(), qty_on_hand: 0, created_at: nowIso() });
       await audit('Create', 'item', saved.id, `${saved.code} ${saved.name}`);
       return saved;
     },
@@ -124,6 +127,7 @@ function makeActions(
       if (!input.code.trim() || !input.name.trim()) throw new RuleError('Batch code and name are required.');
       if (input.end_date && input.start_date && input.end_date < input.start_date) throw new RuleError('End date is before the start date.');
       if (input.budget < 0) throw new RuleError('Budget cannot be negative.');
+      if (input.program === 'License' && !input.location) throw new RuleError('Choose the branch (YGN / MDY / TGI) for a License batch.');
       const dup = get().data.batches.find((b) => b.code.toLowerCase() === input.code.trim().toLowerCase() && b.id !== input.id);
       if (dup) throw new RuleError(`Batch code ${input.code} already exists.`);
       if (input.id) {
@@ -138,14 +142,15 @@ function makeActions(
     },
 
     // ------------------------------------------------------------ inventory
-    async stockIn(input: { item_id: string; qty: number; unit_cost: number; supplier: string; invoice_no: string; reason: string }) {
+    async stockIn(input: { item_id: string; qty: number; unit_cost: number; supplier: string; invoice_no: string; reason: string }, invoice?: File | null) {
       need('stock.create');
       const it = item(input.item_id);
       if (!Number.isInteger(input.qty) || input.qty <= 0) throw new RuleError('Quantity must be a whole number above zero.');
       if (!(input.unit_cost >= 0)) throw new RuleError('Unit cost cannot be negative.');
       if (!input.supplier.trim() || !input.invoice_no.trim()) throw new RuleError('Supplier and invoice number are required for stock in.');
+      const attachment = invoice ? await db.upload(invoice) : null;
       const t = await insertWithRef('stock_txns', 'STK', (ref) => ({
-        ...baseTxn(), ref, type: 'IN', item_id: it.id, qty: input.qty, unit_cost: input.unit_cost,
+        ...baseTxn(), ref, type: 'IN', item_id: it.id, qty: input.qty, unit_cost: input.unit_cost, attachment,
         supplier: input.supplier.trim(), invoice_no: input.invoice_no.trim(), reason: input.reason.trim() || null,
       }));
       await audit('Stock In requested', 'stock_txn', t.id, `${t.ref}: ${t.qty} × ${it.name} from ${t.supplier} (${t.invoice_no})`);
@@ -201,24 +206,27 @@ function makeActions(
       await audit(approve ? 'Approve' : 'Reject', 'stock_txn', id, `${t.ref} ${t.type}${note ? `: ${note}` : ''}`);
       return saved;
     },
-    async saveRequest(input: { id?: string; batch_id: string; purpose: string; lines: RequestLine[] }) {
+    /** file: a new attachment, null to remove it, undefined to keep the current one. */
+    async saveRequest(input: { id?: string; batch_id: string; purpose: string; remarks: string; lines: RequestLine[] }, file?: File | null) {
       need('request.create');
       const lines = input.lines.filter((l) => l.item_id);
       validateLines(lines);
       if (!get().data.batches.some((b) => b.id === input.batch_id)) throw new RuleError('Choose a training batch.');
       const short = checkAvailability(lines, get().data.items);
       if (short.length) throw new RuleError(`Not enough stock: ${short.join('; ')}`);
+      const filePatch: Partial<MaterialRequest> = file === undefined ? {} : { attachment: file ? await db.upload(file) : null };
       if (input.id) {
         const r = get().data.material_requests.find((x) => x.id === input.id);
         if (!r || r.status === 'Approved') throw new RuleError('Approved requests cannot be edited.');
         const saved = await update('material_requests', input.id, {
-          batch_id: input.batch_id, purpose: input.purpose.trim(), lines, status: 'Pending', decided_by: null, decided_at: null, decision_note: null,
+          batch_id: input.batch_id, purpose: input.purpose.trim(), remarks: input.remarks.trim(), lines, ...filePatch,
+          status: 'Pending', decided_by: null, decided_at: null, decision_note: null,
         });
         await audit('Resubmit', 'material_request', saved.id, `${saved.ref} (${lines.length} lines)`);
         return saved;
       }
       const saved = await insertWithRef('material_requests', 'MR', (ref) => ({
-        id: uid(), ref, batch_id: input.batch_id, purpose: input.purpose.trim(), lines, status: 'Pending',
+        id: uid(), ref, batch_id: input.batch_id, purpose: input.purpose.trim(), remarks: input.remarks.trim(), lines, attachment: null, ...filePatch, status: 'Pending',
         created_by: get().user.id, created_at: nowIso(), decided_by: null, decided_at: null, decision_note: null,
       }));
       await audit('Create', 'material_request', saved.id, `${saved.ref} (${lines.length} lines)`);
@@ -273,27 +281,51 @@ function makeActions(
     },
 
     // ------------------------------------------------------------ deposits
-    async registerDeposit(input: Pick<Deposit, 'trainee_name' | 'agent_code' | 'batch_id' | 'amount' | 'payment_date' | 'voucher_ref'>) {
+    async registerDeposit(
+      input: Pick<Deposit, 'trainee_name' | 'nrc' | 'agent_code' | 'trainee_type' | 'batch_id' | 'training_date' | 'amount' | 'payment_date' | 'voucher_ref'>,
+      files: File[] = [],
+    ) {
       need('deposit.create');
       validateNewDeposit(input, get().data.deposits, get().data.batches);
+      const documents: Attachment[] = [];
+      for (const f of files) documents.push(await db.upload(f));
       const saved = await insertWithRef('deposits', 'DEP', (ref) => ({
-        id: uid(), ref, trainee_name: input.trainee_name.trim(), agent_code: input.agent_code.trim().toUpperCase(), batch_id: input.batch_id,
+        id: uid(), ref, trainee_name: input.trainee_name.trim(), nrc: input.nrc.trim(), agent_code: input.agent_code?.trim().toUpperCase() || null,
+        trainee_type: input.trainee_type, batch_id: input.batch_id, training_date: input.training_date,
         amount: input.amount, payment_date: input.payment_date, voucher_ref: input.voucher_ref.trim(), status: 'Held',
-        forfeit_reason: null, request_note: null, attachment: null, requested_by: null, requested_at: null,
+        forfeit_reason: null, request_note: null, attachment: null, documents, requested_by: null, requested_at: null,
         hod_approved_by: null, hod_approved_at: null, finance_approved_by: null, finance_approved_at: null,
         finance_voucher_ref: null, closed_at: null, reversal_from: null, reversal_reason: null, created_by: get().user.id, created_at: nowIso(),
       }));
       await logDeposit(saved, null, 'Deposit registered', null);
-      await audit('Register deposit', 'deposit', saved.id, `${saved.ref}: ${saved.trainee_name} (${saved.agent_code}) ${saved.amount} MMK`);
+      await audit('Register deposit', 'deposit', saved.id, `${saved.ref}: ${saved.trainee_name} (NRC ${saved.nrc}, ${saved.trainee_type}) ${saved.amount} MMK${documents.length ? `, ${documents.length} document(s)` : ''}`);
       return saved;
     },
-    async editDeposit(id: string, patch: Pick<Deposit, 'trainee_name' | 'amount' | 'payment_date' | 'voucher_ref'>) {
+    async editDeposit(id: string, patch: Pick<Deposit, 'trainee_name' | 'nrc' | 'agent_code' | 'trainee_type' | 'training_date' | 'amount' | 'payment_date' | 'voucher_ref'>) {
       need('deposit.create');
       const d = get().data.deposits.find((x) => x.id === id);
       if (!d || d.status !== 'Held') throw new RuleError('Only Held deposits can be corrected. Approved ones need a reversal.');
-      if (!(patch.amount > 0) || !patch.trainee_name.trim() || !patch.voucher_ref.trim()) throw new RuleError('Name, amount and voucher are required.');
-      const saved = await update('deposits', id, patch);
-      await audit('Edit deposit', 'deposit', id, `${d.ref}: ${JSON.stringify({ from: { amount: d.amount, voucher: d.voucher_ref, name: d.trainee_name }, to: { amount: patch.amount, voucher: patch.voucher_ref, name: patch.trainee_name } })}`);
+      if (!(patch.amount > 0) || !patch.trainee_name.trim() || !patch.voucher_ref.trim() || !patch.training_date) throw new RuleError('Name, amount, training date and voucher are required.');
+      if (!isValidNrc(patch.nrc)) throw new RuleError('NRC format looks wrong. Example: 12/MaYaKa(N)123456');
+      const others = get().data.deposits.filter((x) => x.id !== id && x.status !== 'Refunded' && x.status !== 'Forfeited');
+      if (others.some((x) => normalizeNrc(x.nrc) === normalizeNrc(patch.nrc))) throw new RuleError('Another open deposit already uses this NRC.');
+      const clean = { ...patch, nrc: patch.nrc.trim(), agent_code: patch.agent_code?.trim().toUpperCase() || null };
+      const saved = await update('deposits', id, clean);
+      const changed = (Object.keys(clean) as (keyof typeof clean)[]).filter((k) => clean[k] !== d[k]);
+      await audit('Edit deposit', 'deposit', id, `${d.ref}: ${changed.map((k) => `${k}: ${String(d[k])} → ${String(clean[k])}`).join('; ')}`);
+      return saved;
+    },
+    /** Supporting documents can be added while the deposit is still open (not after Refunded / Forfeited). */
+    async addDepositDocuments(id: string, files: File[]) {
+      need('deposit.create');
+      const d = get().data.deposits.find((x) => x.id === id);
+      if (!d) throw new RuleError('Deposit not found.');
+      if (d.status === 'Refunded' || d.status === 'Forfeited' || d.status === 'Reversal Request') throw new RuleError('This deposit is closed; documents can no longer be added.');
+      if (!files.length) throw new RuleError('Choose at least one file.');
+      const added: Attachment[] = [];
+      for (const f of files) added.push(await db.upload(f));
+      const saved = await update('deposits', id, { documents: [...(d.documents ?? []), ...added] });
+      await audit('Add documents', 'deposit', id, `${d.ref}: ${added.map((a) => a.name).join(', ')}`);
       return saved;
     },
     async depositAction(id: string, action: DepositAction, file?: File | null) {
@@ -361,18 +393,20 @@ function makeActions(
     async addExpense(input: Omit<Expense, 'id' | 'created_by' | 'created_at'>) {
       need('expense.create');
       if (!(input.amount > 0) || !input.description.trim() || !input.date) throw new RuleError('Date, description and a positive amount are required.');
+      if (input.batch_id) input = { ...input, budget_category: budgetCategory(get().data.batches.find((b) => b.id === input.batch_id)) };
       const saved = await insert('expenses', { ...input, description: input.description.trim(), id: uid(), created_by: get().user.id, created_at: nowIso() });
-      await audit('Record expense', 'expense', saved.id, `${saved.category}: ${saved.description} ${saved.amount} MMK`);
+      await audit('Record expense', 'expense', saved.id, `${saved.budget_category} / ${saved.category}: ${saved.description} ${saved.amount} MMK`);
       return saved;
     },
-    async setBudget(year: number, amount: number, note: string) {
+    async setBudget(year: number, category: Budget['category'], amount: number, note: string) {
       need('budget.manage');
       if (!(amount > 0)) throw new RuleError('Budget must be above zero.');
-      const existing = get().data.budgets.find((b) => b.fiscal_year === year);
+      const existing = get().data.budgets.find((b) => b.fiscal_year === year && (b.category ?? 'Overall') === category);
+      if (existing && existing.amount === amount && existing.note === note) return existing;
       const saved: Budget = existing
         ? await update('budgets', existing.id, { amount, note })
-        : await insert('budgets', { id: uid(), fiscal_year: year, amount, note, created_at: nowIso() });
-      await audit('Set budget', 'budget', saved.id, `FY${year}: ${existing ? `${existing.amount} → ` : ''}${amount} MMK`);
+        : await insert('budgets', { id: uid(), fiscal_year: year, category, amount, note, created_at: nowIso() });
+      await audit('Set budget', 'budget', saved.id, `FY${year} ${category}: ${existing ? `${existing.amount} → ` : ''}${amount} MMK`);
       return saved;
     },
 

@@ -4,7 +4,7 @@ import type {
   Asset, AssetLog, Batch, Budget, Category, Classification, DataSet, Deposit, DepositStatusLog, Expense, Item,
   MaterialRequest, Profile, Settings, StockTxn,
 } from './types';
-import { stockDelta } from './logic';
+import { budgetCategory, stockDelta } from './logic';
 
 const day = 86_400_000;
 const iso = (d: Date) => d.toISOString();
@@ -66,7 +66,7 @@ export function buildSeed(): DataSet {
   const add = (cat: Category, prefix: string, rows: Row[], dflt: Classification) => rows.forEach(([name, unit, cost, min, , cls], i) => {
     items.push({
       id: id('itm'), code: `${prefix}-${String(i + 1).padStart(3, '0')}`, name, category: cat, classification: cls ?? dflt,
-      unit, unit_cost: cost, min_level: min, qty_on_hand: 0, active: true, created_at: iso(ago(200)),
+      unit, unit_cost: cost, min_level: min, qty_on_hand: 0, active: true, photo: null, created_at: iso(ago(200)),
     });
   });
   add('Refreshments', 'RF', REFRESHMENTS, 'Consumable');
@@ -78,13 +78,15 @@ export function buildSeed(): DataSet {
 
   const y = new Date().getFullYear();
   const batches: Batch[] = [
-    { id: 'b-lic1', code: `LIC-${y}-07`, name: 'License Class July Intake', program: 'License', start_date: dateAgo(130), end_date: dateAgo(100), budget: 1_800_000, status: 'Completed', created_at: iso(ago(150)) },
-    { id: 'b-lic2', code: `LIC-${y}-10`, name: 'License Class October Intake', program: 'License', start_date: dateAgo(35), end_date: dateAgo(5), budget: 2_000_000, status: 'Active', created_at: iso(ago(60)) },
-    { id: 'b-lic3', code: `LIC-${y}-12`, name: 'License Class December Intake', program: 'License', start_date: dateAgo(-20), end_date: dateAgo(-45), budget: 2_000_000, status: 'Planned', created_at: iso(ago(10)) },
-    { id: 'b-lic0', code: `LIC-${y - 1}-12`, name: 'License Class December Intake (prior year)', program: 'License', start_date: dateAgo(345), end_date: dateAgo(320), budget: 1_600_000, status: 'Active', created_at: iso(ago(360)) },
-    { id: 'b-corp', code: `CORP-${y}-11`, name: 'New Employee Orientation (Nov)', program: 'Corporate', start_date: dateAgo(8), end_date: dateAgo(-2), budget: 1_200_000, status: 'Active', created_at: iso(ago(30)) },
-    { id: 'b-agy', code: `AGY-${y}-11`, name: 'Agency Sales Bootcamp', program: 'Agency', start_date: dateAgo(15), end_date: dateAgo(10), budget: 1_500_000, status: 'Completed', created_at: iso(ago(40)) },
-    { id: 'b-ycp', code: `YCP-${y}-B3`, name: 'Young Career Program Batch 3', program: 'YCP', start_date: dateAgo(50), end_date: dateAgo(-40), budget: 3_000_000, status: 'Active', created_at: iso(ago(70)) },
+    { id: 'b-lic1', code: `LIC-YGN-${y}-07`, name: 'License Class July Intake (Yangon)', program: 'License', location: 'YGN', start_date: dateAgo(130), end_date: dateAgo(100), budget: 1_800_000, status: 'Completed', created_at: iso(ago(150)) },
+    { id: 'b-lic2', code: `LIC-YGN-${y}-10`, name: 'License Class October Intake (Yangon)', program: 'License', location: 'YGN', start_date: dateAgo(35), end_date: dateAgo(5), budget: 2_000_000, status: 'Active', created_at: iso(ago(60)) },
+    { id: 'b-lic3', code: `LIC-YGN-${y}-12`, name: 'License Class December Intake (Yangon)', program: 'License', location: 'YGN', start_date: dateAgo(-20), end_date: dateAgo(-45), budget: 2_000_000, status: 'Planned', created_at: iso(ago(10)) },
+    { id: 'b-lic0', code: `LIC-MDY-${y - 1}-12`, name: 'License Class December Intake (Mandalay)', program: 'License', location: 'MDY', start_date: dateAgo(345), end_date: dateAgo(320), budget: 1_600_000, status: 'Active', created_at: iso(ago(360)) },
+    { id: 'b-lic4', code: `LIC-TGI-${y}-09`, name: 'License Class September Intake (Taunggyi)', program: 'License', location: 'TGI', start_date: dateAgo(70), end_date: dateAgo(45), budget: 1_200_000, status: 'Active', created_at: iso(ago(90)) },
+    { id: 'b-corp', code: `CORP-${y}-11`, name: 'New Employee Orientation (Nov)', program: 'Corporate', location: 'YGN', start_date: dateAgo(8), end_date: dateAgo(-2), budget: 1_200_000, status: 'Active', created_at: iso(ago(30)) },
+    { id: 'b-agy', code: `AGY-${y}-11`, name: 'Agency Sales Bootcamp', program: 'Agency', location: 'YGN', start_date: dateAgo(15), end_date: dateAgo(10), budget: 1_500_000, status: 'Completed', created_at: iso(ago(40)) },
+    { id: 'b-ycp', code: `YCP-${y}-B3`, name: 'Young Career Program Batch 3', program: 'YCP', location: 'YGN', start_date: dateAgo(50), end_date: dateAgo(-40), budget: 3_000_000, status: 'Active', created_at: iso(ago(70)) },
+    { id: 'b-pss', code: `PSS-${y}-10`, name: 'Product Knowledge & Customer Service Skills', program: 'Product & Soft Skills', location: 'MDY', start_date: dateAgo(25), end_date: dateAgo(23), budget: 900_000, status: 'Completed', created_at: iso(ago(45)) },
   ];
 
   const stock_txns: StockTxn[] = [];
@@ -94,7 +96,7 @@ export function buildSeed(): DataSet {
     const t: StockTxn = {
       id: id('txn'), ref: `STK-${new Date(ago(daysAgo)).getFullYear()}-${String(++tx).padStart(4, '0')}`, unit_cost: it.unit_cost,
       batch_id: null, request_id: null, supplier: null, invoice_no: null, condition: null, reason: null, status: 'Approved',
-      created_by: 'u-staff', created_at: iso(ago(daysAgo)), decided_by: 'u-hod', decided_at: iso(ago(daysAgo)), decision_note: null, ...p,
+      created_by: 'u-staff', created_at: iso(ago(daysAgo)), decided_by: 'u-hod', decided_at: iso(ago(daysAgo)), decision_note: null, attachment: null, ...p,
     };
     stock_txns.push(t);
     if (t.status === 'Approved') it.qty_on_hand += stockDelta(t);
@@ -106,7 +108,7 @@ export function buildSeed(): DataSet {
   let mr = 0;
   const request = (batch: string, lines: [number, number][], status: MaterialRequest['status'], daysAgo: number, purpose: string) => {
     const r: MaterialRequest = {
-      id: id('mr'), ref: `MR-${y}-${String(++mr).padStart(4, '0')}`, batch_id: batch, purpose, status,
+      id: id('mr'), ref: `MR-${y}-${String(++mr).padStart(4, '0')}`, batch_id: batch, purpose, remarks: '', attachment: null, status,
       lines: lines.map(([i, q]) => ({ item_id: items[i].id, qty: q })), created_by: 'u-staff', created_at: iso(ago(daysAgo)),
       decided_by: status === 'Pending' ? null : 'u-hod', decided_at: status === 'Pending' ? null : iso(ago(daysAgo - 1)),
       decision_note: status === 'Rejected' ? 'Quantity too high for 25 trainees, please revise.' : null,
@@ -119,8 +121,12 @@ export function buildSeed(): DataSet {
     request('b-corp', [[1, 3], [8, 40], [14, 4], [26 + 4, 30], [26 + 16, 30]], 'Approved', 8, 'Orientation week supplies'),
     request('b-ycp', [[48, 25], [49, 25], [50, 25], [51, 25]], 'Approved', 48, 'YCP Batch 3 welcome kits'),
     request('b-agy', [[26 + 1, 15], [26 + 2, 10], [8, 50], [11, 12]], 'Approved', 15, 'Bootcamp awards and refreshments'),
+    request('b-pss', [[5, 2], [8, 30], [26 + 13, 2], [26 + 16, 20]], 'Approved', 25, 'Product & soft skills workshop, Mandalay'),
+    request('b-lic4', [[0, 2], [8, 40], [26 + 12, 20]], 'Approved', 70, 'Taunggyi license class supplies'),
   ];
-  request('b-ycp', [[53, 8], [54, 4]], 'Pending', 1, 'Uniforms for new interns and ambassadors');
+  const pend = request('b-ycp', [[53, 8], [54, 4]], 'Pending', 1, 'Uniforms for new interns and ambassadors');
+  pend.remarks = 'Sizes are in the attached list. Ambassador uniforms needed before the 20th.';
+  pend.attachment = { name: 'YCP_B3_uniform_sizes.csv', url: 'data:text/csv;base64,TmFtZSxTaXplCk1hIFBoeXUsTQpNZyBLeWF3LEwK', size: 34 };
   request('b-corp', [[9, 150]], 'Pending', 0, 'Water for closing ceremony');
   request('b-agy', [[2, 20]], 'Rejected', 16, 'Coffee for bootcamp');
 
@@ -138,9 +144,13 @@ export function buildSeed(): DataSet {
   txn({ type: 'RETURN', item_id: items[8].id, qty: 12, batch_id: 'b-lic2', condition: 'Good', reason: 'Unopened water returned', created_by: 'u-staff2' }, 4);
   txn({ type: 'RETURN', item_id: items[26 + 12].id, qty: 2, batch_id: 'b-lic2', condition: 'Damaged', reason: 'Torn covers', created_by: 'u-staff2' }, 4);
   // Purchases this year (approved) and one pending purchase.
-  txn({ type: 'IN', item_id: items[9].id, qty: 200, supplier: 'Amico Co., Ltd.', invoice_no: 'INV-88231', reason: 'Monthly water' }, 20);
+  const inv = (n: string) => ({ name: `${n}.pdf`, url: 'data:application/pdf;base64,JVBERi0xLjQKJSBkZW1vIGludm9pY2UK', size: 24 });
+  txn({ type: 'IN', item_id: items[9].id, qty: 200, supplier: 'Amico Co., Ltd.', invoice_no: 'INV-88231', reason: 'Monthly water', attachment: inv('INV-88231') }, 20);
+  txn({ type: 'IN', item_id: items[11].id, qty: 40, supplier: 'City Mart Wholesale', invoice_no: 'CMW-54410', reason: 'Biscuits', attachment: inv('CMW-54410') }, 110);
+  txn({ type: 'IN', item_id: items[26 + 11].id, qty: 60, supplier: 'Myanmar Book Centre', invoice_no: 'MBC-2201', reason: 'Textbook reprint', attachment: inv('MBC-2201') }, 150);
+  txn({ type: 'IN', item_id: items[48].id, qty: 100, supplier: 'Promo Gifts Co.', invoice_no: 'PG-7731', reason: 'YCP bottles', attachment: inv('PG-7731') }, 240);
   txn({ type: 'IN', item_id: items[26 + 1].id, qty: 50, supplier: 'Golden Awards Shop', invoice_no: 'GA-1102', reason: 'Badge restock' }, 60);
-  txn({ type: 'IN', item_id: items[3].id, qty: 24, supplier: 'City Mart Wholesale', invoice_no: 'CMW-55120', reason: 'Coffee restock', status: 'Pending', decided_by: null, decided_at: null }, 1);
+  txn({ type: 'IN', item_id: items[3].id, qty: 24, supplier: 'City Mart Wholesale', invoice_no: 'CMW-55120', reason: 'Coffee restock', status: 'Pending', decided_by: null, decided_at: null, attachment: inv('CMW-55120') }, 1);
   txn({ type: 'ADJUST', item_id: items[12].id, qty: -6, reason: 'Expired cakes written off', status: 'Pending', decided_by: null, decided_at: null }, 0);
 
   // Reusable assets.
@@ -173,13 +183,16 @@ export function buildSeed(): DataSet {
   // License deposits.
   const deposits: Deposit[] = [];
   const deposit_status_log: DepositStatusLog[] = [];
+  const townships = ['MaYaKa', 'KaMaYa', 'BaHaNa', 'ThaGaKa', 'LaMaTa', 'DaGaYa', 'AhLaNa'];
+  const nrcOf = (i: number, st: number) => `${st}/${townships[i % townships.length]}(N)${String(104_215 + i * 7_331).slice(0, 6)}`;
   const names: [string, string][] = [
-    ['Mg Aung Ko Ko', 'AG-10231'], ['Ma Su Myat Noe', 'AG-10244'], ['Mg Htet Naing', 'AG-10252'], ['Ma Ei Thandar', 'AG-10260'],
+    ['Ma Nang Seng', ''], ['Sai Htoo Aung', 'AG-10352'], ['Mg Aung Ko Ko', 'AG-10231'], ['Ma Su Myat Noe', 'AG-10244'], ['Mg Htet Naing', 'AG-10252'], ['Ma Ei Thandar', 'AG-10260'],
     ['Mg Zaw Lin Oo', 'AG-10271'], ['Ma Khin Sandar', 'AG-10285'], ['Mg Pyae Sone', 'AG-10290'], ['Ma Yadanar Htun', 'AG-10302'],
     ['Mg Thura Aung', 'AG-10311'], ['Ma Nandar Hlaing', 'AG-10318'], ['Mg Min Khant', 'AG-10324'], ['Ma Phyu Sin', 'AG-10330'],
     ['Mg Kaung Myat', 'AG-10337'], ['Ma Hsu Lae', 'AG-10345'],
   ];
   const plan: [batch: string, paidDaysAgo: number, status: Deposit['status'], extra?: Partial<Deposit>][] = [
+    ['b-lic4', 72, 'Held', { trainee_type: 'External', agent_code: null }], ['b-lic4', 71, 'Held'],
     ['b-lic0', 345, 'Held'], ['b-lic0', 340, 'Held'], ['b-lic0', 372, 'Held'],
     ['b-lic0', 344, 'Refunded'], ['b-lic0', 341, 'Forfeited', { forfeit_reason: 'Service Period Not Met' }],
     ['b-lic1', 130, 'Refunded'], ['b-lic1', 128, 'Forfeited', { forfeit_reason: 'Course Incomplete' }],
@@ -195,8 +208,11 @@ export function buildSeed(): DataSet {
       ? { name: `Exam_Pass_Certificate_${names[i][1]}.pdf`, url: 'data:text/plain;base64,RGVtbyBhdHRhY2htZW50', size: 18 }
       : requested ? { name: `Forfeiture_Notice_${names[i][1]}.pdf`, url: 'data:text/plain;base64,RGVtbyBhdHRhY2htZW50', size: 18 } : null;
     const d: Deposit = {
-      id: id('dep'), ref: `DEP-${new Date(created).getFullYear()}-${String(i + 1).padStart(4, '0')}`, trainee_name: names[i][0], agent_code: names[i][1],
-      batch_id: batch, amount: batch === 'b-lic0' ? 200_000 : 250_000, payment_date: created.slice(0, 10), voucher_ref: `RV-${70210 + i * 3}`,
+      id: id('dep'), ref: `DEP-${new Date(created).getFullYear()}-${String(i + 1).padStart(4, '0')}`, trainee_name: names[i][0],
+      nrc: nrcOf(i, batch === 'b-lic0' ? 9 : batch === 'b-lic4' ? 13 : 12), agent_code: names[i][1] || null, trainee_type: i % 4 === 3 ? 'External' : 'Internal',
+      training_date: batches.find((b) => b.id === batch)!.start_date,
+      documents: [{ name: `Payment_slip_RV-${70210 + i * 3}.pdf`, url: 'data:application/pdf;base64,JVBERi0xLjQKJSBkZW1vCg==', size: 18 }],
+      batch_id: batch, amount: batch === 'b-lic0' || batch === 'b-lic4' ? 200_000 : 250_000, payment_date: created.slice(0, 10), voucher_ref: `RV-${70210 + i * 3}`,
       status, forfeit_reason: null, request_note: requested ? (status.includes('Forfeit') ? 'Did not attend the final 3 sessions; HR confirmation attached.' : 'Passed the IRD license exam.') : null,
       attachment: attach, requested_by: requested ? 'u-staff' : null, requested_at: requested ? iso(ago(final ? 20 : 2)) : null,
       hod_approved_by: final ? 'u-hod' : null, hod_approved_at: final ? iso(ago(18)) : null,
@@ -213,16 +229,30 @@ export function buildSeed(): DataSet {
     if (status === 'Refunded') log('Refund Request', 'Refunded', 'u-fin', d.finance_approved_at!, `HOD approved; paid on ${d.finance_voucher_ref}`);
   });
 
+  const ex = (daysAgo: number, batch: string | null, category: string, description: string, amount: number, cat?: Expense['budget_category']): Expense => ({
+    id: id('exp'), date: dateAgo(daysAgo), batch_id: batch, category, description, amount,
+    budget_category: cat ?? (batch ? budgetCategory(batches.find((b) => b.id === batch)) : 'General'),
+    created_by: 'u-staff', created_at: iso(ago(daysAgo)),
+  });
   const expenses: Expense[] = [
-    { id: id('exp'), date: dateAgo(34), batch_id: 'b-lic2', category: 'Venue', description: 'Training hall rental (5 days)', amount: 750_000, created_by: 'u-staff', created_at: iso(ago(34)) },
-    { id: id('exp'), date: dateAgo(14), batch_id: 'b-agy', category: 'Transport', description: 'Bus hire for field visit', amount: 420_000, created_by: 'u-staff', created_at: iso(ago(14)) },
-    { id: id('exp'), date: dateAgo(48), batch_id: 'b-ycp', category: 'Printing', description: 'Program handbooks', amount: 380_000, created_by: 'u-staff2', created_at: iso(ago(48)) },
-    { id: id('exp'), date: dateAgo(7), batch_id: 'b-corp', category: 'Refreshments', description: 'Lunch boxes, day 1', amount: 310_000, created_by: 'u-staff', created_at: iso(ago(7)) },
-    { id: id('exp'), date: dateAgo(90), batch_id: null, category: 'Other', description: 'Store room shelving', amount: 650_000, created_by: 'u-staff', created_at: iso(ago(90)) },
+    ex(34, 'b-lic2', 'Venue', 'Training hall rental (5 days)', 750_000),
+    ex(14, 'b-agy', 'Transport', 'Bus hire for field visit', 420_000),
+    ex(48, 'b-ycp', 'Printing', 'Program handbooks', 380_000),
+    ex(7, 'b-corp', 'Refreshments', 'Lunch boxes, day 1', 310_000),
+    ex(90, null, 'Other', 'Store room shelving', 650_000),
+    ex(70, 'b-lic4', 'Venue', 'Hotel meeting room, Taunggyi', 520_000),
+    ex(68, 'b-lic4', 'Transport', 'Trainer travel YGN–Heho', 460_000),
+    ex(25, 'b-pss', 'Trainer Fee', 'External soft-skills facilitator', 600_000),
+    ex(130, 'b-lic1', 'Venue', 'Training hall rental', 700_000),
+    ex(200, null, 'Printing', 'License exam guide reprint (Mandalay)', 350_000, 'License - MDY'),
+    ex(230, null, 'Venue', 'YCP Batch 2 graduation', 900_000, 'YCP'),
+    ex(160, null, 'Trainer Fee', 'Product launch training', 450_000, 'Product & Soft Skills'),
   ];
 
   const budgets: Budget[] = [
-    { id: id('bud'), fiscal_year: y, amount: 25_000_000, note: 'Approved L&D annual budget', created_at: iso(ago(300)) },
+    { id: id('bud'), fiscal_year: y, category: 'Overall', amount: 25_000_000, note: 'Approved L&D annual budget', created_at: iso(ago(300)) },
+    ...([['YCP', 6_000_000], ['License - YGN', 6_000_000], ['License - MDY', 3_000_000], ['License - TGI', 2_500_000], ['Product & Soft Skills', 3_000_000]] as const)
+      .map(([category, amount]) => ({ id: id('bud'), fiscal_year: y, category, amount, note: '', created_at: iso(ago(300)) })),
   ];
   const settings: Settings[] = [{ id: 'settings', retention_alert_months: 11, service_term_months: 12, low_stock_warning_pct: 0, updated_at: now }];
 
