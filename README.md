@@ -8,6 +8,12 @@ materials, YCP merchandise, reusable assets, training budgets, and the full **Li
 Stack: React 19 + TypeScript + Vite + Tailwind CSS 4, with Supabase (Postgres, Auth, Storage) as the backend.
 The theme is navy and silver, and the layout works on desktop, tablet and phone.
 
+## Gemini portal (static page)
+
+`public/kbz-portal/index.html` is the separate single-page portal exported from Google Gemini (Canvas), kept as
+the original apart from removing Gemini's own editor scripts. It is served unchanged at **`/kbz-portal`**
+(see `vercel.json`). Its sample data lives only in the page, so changes are lost on refresh.
+
 ## Quick start (demo mode)
 
 ```bash
