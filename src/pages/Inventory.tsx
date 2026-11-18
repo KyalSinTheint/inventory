@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowDownToLine, Camera, Pencil, Plus, RotateCcw, SlidersHorizontal, ClipboardCheck, Trash2 } from 'lucide-react';
+import { ArrowDownToLine, CalendarDays, Camera, ChevronLeft, ChevronRight, Pencil, Plus, RotateCcw, SlidersHorizontal, ClipboardCheck, Trash2 } from 'lucide-react';
+import { stockMovement } from './reportSpecs';
 import { FileLink, FilePicker, Thumb } from '../components/files';
 import { DOC_ACCEPT } from '../lib/files';
 import { useData } from '../lib/store';
 import { CATEGORIES, CLASSIFICATIONS, TXN_LABELS, type Category, type CountLine, type Item, type ReturnCondition } from '../lib/types';
-import { isLowStock } from '../lib/logic';
 import { date, dateTime, mmk, num, thisMonth } from '../lib/format';
 import { Badge, Button, Empty, ErrorNote, Field, Modal, PageHeader, SearchBox, StatusBadge, Tabs, useSubmit, useToast } from '../components/ui';
 
@@ -15,6 +15,7 @@ export default function InventoryPage() {
   const { can } = useData();
   const [params] = useSearchParams();
   const [tab, setTab] = useState<Tab>('items');
+  const [month, setMonth] = useState(params.get('month') ?? '');
   const [modal, setModal] = useState<null | 'in' | 'return' | 'adjust' | { item?: Item }>(() => (params.get('stockin') === '1' && can('stock.create') ? 'in' : null));
   return (
     <>
@@ -24,10 +25,11 @@ export default function InventoryPage() {
           <Button variant="secondary" onClick={() => setModal('return')}><RotateCcw className="h-4 w-4" />Return</Button>
           <Button variant="secondary" onClick={() => setModal('adjust')}><SlidersHorizontal className="h-4 w-4" />Adjust / write-off</Button>
         </>} />
+      <MonthBar month={month} onChange={setMonth} />
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'items', label: 'Stock on hand' }, { id: 'txns', label: 'Transactions' }, { id: 'count', label: 'Physical count' }]} />
-      {tab === 'items' && <ItemsTab lowOnly={params.get('low') === '1'} initialCat={params.get('cat') ?? ''} onEdit={(item) => setModal({ item })} />}
-      {tab === 'txns' && <TxnsTab />}
-      {tab === 'count' && <CountTab />}
+      {tab === 'items' && <ItemsTab month={month} lowOnly={params.get('low') === '1'} initialCat={params.get('cat') ?? ''} onEdit={(item) => setModal({ item })} />}
+      {tab === 'txns' && <TxnsTab month={month} />}
+      {tab === 'count' && <CountTab month={month} />}
       {modal === 'in' && <StockInModal onClose={() => setModal(null)} />}
       {modal === 'return' && <ReturnModal onClose={() => setModal(null)} />}
       {modal === 'adjust' && <AdjustModal onClose={() => setModal(null)} />}
@@ -36,19 +38,56 @@ export default function InventoryPage() {
   );
 }
 
-function ItemsTab({ lowOnly, initialCat, onEdit }: { lowOnly: boolean; initialCat: string; onEdit: (i?: Item) => void }) {
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export const monthLabel = (ym: string) => `${MONTHS[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
+const monthEnd = (ym: string) => new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).toISOString().slice(0, 10);
+const txnMonth = (t: { decided_at: string | null; created_at: string }) => (t.decided_at ?? t.created_at).slice(0, 7);
+
+/** One month picker for every Inventory tab. Empty = all months (current balances). */
+function MonthBar({ month, onChange }: { month: string; onChange: (m: string) => void }) {
+  const { data } = useData();
+  const months = useMemo(() => {
+    const set = new Set<string>([thisMonth()]);
+    for (const t of data.stock_txns) set.add(txnMonth(t));
+    for (const c of data.physical_counts) set.add(c.month);
+    return [...set].sort().reverse();
+  }, [data.stock_txns, data.physical_counts]);
+  const i = months.indexOf(month);
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-2xs">
+      <CalendarDays className="h-4 w-4 text-kbz-navy" />
+      <span className="text-sm font-semibold text-kbz-dark">View month</span>
+      <button className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30" aria-label="Previous month" disabled={!month || i === months.length - 1}
+        onClick={() => onChange(months[i + 1])}><ChevronLeft className="h-4 w-4" /></button>
+      <select className="input w-auto" value={month} onChange={(e) => onChange(e.target.value)} aria-label="Month">
+        <option value="">All months (current balance)</option>
+        {months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+      </select>
+      <button className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30" aria-label="Next month" disabled={!month || i <= 0}
+        onClick={() => onChange(months[i - 1])}><ChevronRight className="h-4 w-4" /></button>
+      {month && <Button size="sm" variant="ghost" onClick={() => onChange('')}>Show all</Button>}
+      <span className="ml-auto text-xs text-slate-500">{month ? `Balances as at ${date(monthEnd(month))}; movements in ${monthLabel(month)}` : 'Showing current balances and all transactions'}</span>
+    </div>
+  );
+}
+
+function ItemsTab({ month, lowOnly, initialCat, onEdit }: { month: string; lowOnly: boolean; initialCat: string; onEdit: (i?: Item) => void }) {
   const { data, can } = useData();
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<string>(initialCat);
   const [low, setLow] = useState(lowOnly);
+  // For a chosen month: balance at month end plus that month's movements, rebuilt from approved transactions.
+  const moves = useMemo(() => (month ? new Map(stockMovement(data, `${month}-01`, monthEnd(month)).map((r) => [r.item.id, r])) : null), [data, month]);
+  const qtyOf = (i: Item) => moves?.get(i.id)?.closing ?? i.qty_on_hand;
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return data.items.filter((i) => (!cat || i.category === cat) && (!low || isLowStock(i)) && (!s || i.name.toLowerCase().includes(s) || i.code.toLowerCase().includes(s)));
-  }, [data.items, q, cat, low]);
+    return data.items.filter((i) => (!cat || i.category === cat) && (!low || qtyOf(i) <= i.min_level) && (!s || i.name.toLowerCase().includes(s)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.items, q, cat, low, moves]);
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <SearchBox value={q} onChange={setQ} placeholder="Search item or code" />
+        <SearchBox value={q} onChange={setQ} placeholder="Search item" />
         <select className="input w-auto" value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Category">
           <option value="">All categories</option>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}
         </select>
@@ -58,21 +97,29 @@ function ItemsTab({ lowOnly, initialCat, onEdit }: { lowOnly: boolean; initialCa
       </div>
       <div className="table-wrap">
         <table className="tbl">
-          <thead><tr><th className="w-12" /><th>Code</th><th>Item</th><th>Category</th><th>Type</th><th className="num">On hand</th><th className="num">Min</th><th className="num">Cost / unit</th><th className="num">Value (qty × cost)</th>{can('item.manage') && <th />}</tr></thead>
+          <thead><tr><th className="w-12" /><th>Item</th><th>Category</th><th>Type</th>
+            {moves && <><th className="num">Opening</th><th className="num">In</th><th className="num">Out</th></>}
+            <th className="num">{moves ? `On hand ${monthLabel(month)}` : 'On hand'}</th><th className="num">Min</th><th className="num">Cost / unit</th><th className="num">Value (qty × cost)</th>{can('item.manage') && <th />}</tr></thead>
           <tbody>
             {rows.map((i) => {
-              const isLow = isLowStock(i);
+              const qty = qtyOf(i);
+              const isLow = qty <= i.min_level;
+              const m = moves?.get(i.id);
               return (
                 <tr key={i.id} className={isLow ? 'bg-red-50/60' : ''}>
                   <td className="py-1.5">{can('item.manage') ? <button onClick={() => onEdit(i)} aria-label={`Photo of ${i.name}`}><Thumb att={i.photo} alt={i.name} /></button> : <Thumb att={i.photo} alt={i.name} />}</td>
-                  <td className="whitespace-nowrap text-slate-500">{i.code}</td>
                   <td className="font-medium text-navy-900">{i.name}{!i.active && <Badge>inactive</Badge>}</td>
                   <td className="whitespace-nowrap">{i.category}</td>
                   <td className="whitespace-nowrap text-xs text-slate-500">{i.classification}</td>
-                  <td className="num"><span className={isLow ? 'font-semibold text-red-600' : 'font-medium'}>{num(i.qty_on_hand)}</span> <span className="text-xs text-slate-500">{i.unit}</span></td>
+                  {m && <>
+                    <td className="num text-slate-500">{num(m.opening)}</td>
+                    <td className="num text-emerald-700">{m.inQty + Math.max(0, m.adjusted) + m.returned ? `+${num(m.inQty + Math.max(0, m.adjusted) + m.returned)}` : '—'}</td>
+                    <td className="num text-kbz-red">{m.outQty - Math.min(0, m.adjusted) ? `−${num(m.outQty - Math.min(0, m.adjusted))}` : '—'}</td>
+                  </>}
+                  <td className="num"><span className={isLow ? 'font-semibold text-red-600' : 'font-medium'}>{num(qty)}</span> <span className="text-xs text-slate-500">{i.unit}</span></td>
                   <td className="num text-slate-500">{num(i.min_level)}</td>
                   <td className="num">{num(i.unit_cost)}</td>
-                  <td className="num">{num(i.qty_on_hand * i.unit_cost)}</td>
+                  <td className="num">{num(qty * i.unit_cost)}</td>
                   {can('item.manage') && <td><button className="rounded p-1 text-slate-500 hover:bg-silver-100" onClick={() => onEdit(i)} aria-label={`Edit ${i.name}`}><Pencil className="h-4 w-4" /></button></td>}
                 </tr>
               );
@@ -81,55 +128,56 @@ function ItemsTab({ lowOnly, initialCat, onEdit }: { lowOnly: boolean; initialCa
         </table>
         {rows.length === 0 && <Empty>No items match.</Empty>}
       </div>
-      <p className="mt-2 text-xs text-slate-500">Rows in red are at or below the minimum level. Total value: {mmk(rows.reduce((s, i) => s + i.qty_on_hand * i.unit_cost, 0))}</p>
+      <p className="mt-2 text-xs text-slate-500">Rows in red are at or below the minimum level. Total value{month ? ` at end of ${monthLabel(month)}` : ''}: {mmk(rows.reduce((s, i) => s + qtyOf(i) * i.unit_cost, 0))}</p>
     </>
   );
 }
 
-function TxnsTab() {
+function TxnsTab({ month }: { month: string }) {
   const { data, name } = useData();
   const [type, setType] = useState('');
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
   const item = (id: string) => data.items.find((i) => i.id === id);
-  const batch = (id: string | null) => data.batches.find((b) => b.id === id)?.code;
+  const topic = (id: string | null) => data.batches.find((b) => b.id === id)?.name ?? '';
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase();
     return data.stock_txns
-      .filter((t) => (!type || t.type === type) && (!status || t.status === status))
-      .filter((t) => !s || t.ref.toLowerCase().includes(s) || (item(t.item_id)?.name.toLowerCase().includes(s) ?? false) || (t.reason ?? '').toLowerCase().includes(s))
+      .filter((t) => (!month || txnMonth(t) === month) && (!type || t.type === type) && (!status || t.status === status))
+      .filter((t) => !s || (item(t.item_id)?.name.toLowerCase().includes(s) ?? false) || topic(t.batch_id).toLowerCase().includes(s))
       .sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 500);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.stock_txns, type, status, q]);
+  }, [data.stock_txns, type, status, q, month]);
+  const total = rows.filter((t) => t.status === 'Approved').reduce((sum, t) => sum + Math.abs(t.qty) * t.unit_cost, 0);
   return (
     <>
       <div className="mb-4 flex flex-wrap gap-2">
-        <SearchBox value={q} onChange={setQ} placeholder="Search ref, item, note" />
+        <SearchBox value={q} onChange={setQ} placeholder="Search item or training" />
         <select className="input w-auto" value={type} onChange={(e) => setType(e.target.value)} aria-label="Type"><option value="">All types</option>{Object.entries(TXN_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
         <select className="input w-auto" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">All statuses</option><option>Pending</option><option>Approved</option><option>Rejected</option></select>
       </div>
       <div className="table-wrap">
         <table className="tbl">
-          <thead><tr><th>Ref</th><th>Date</th><th>Type</th><th>Item</th><th className="num">Qty</th><th className="num">Cost / unit</th><th className="num">Total</th><th>Details</th><th>Status</th><th>By</th></tr></thead>
+          <thead><tr><th>Training topic</th><th>Date</th><th>Type</th><th>Item</th><th className="num">Qty</th><th className="num">Cost / unit</th><th className="num">Total</th><th>Status</th><th>By</th></tr></thead>
           <tbody>
             {rows.map((t) => (
               <tr key={t.id}>
-                <td className="whitespace-nowrap font-medium text-navy-800">{t.ref}</td>
+                <td className="min-w-40 font-medium text-navy-800">{topic(t.batch_id) || <span className="font-normal text-slate-400">—</span>}</td>
                 <td className="whitespace-nowrap">{date(t.created_at)}</td>
                 <td className="whitespace-nowrap">{TXN_LABELS[t.type]}{t.condition && <div className="text-xs text-slate-500">{t.condition}</div>}</td>
-                <td>{item(t.item_id)?.name}</td>
+                <td>{item(t.item_id)?.name}{t.attachment && <div className="text-xs"><FileLink att={t.attachment} /></div>}</td>
                 <td className="num">{t.type === 'OUT' ? '−' : t.type === 'ADJUST' && t.qty < 0 ? '−' : '+'}{num(Math.abs(t.qty))}</td>
                 <td className="num">{num(t.unit_cost)}</td>
                 <td className="num font-medium">{num(Math.abs(t.qty) * t.unit_cost)}</td>
-                <td className="text-xs text-slate-600">{[t.supplier, t.invoice_no, batch(t.batch_id), t.reason].filter(Boolean).join(' · ')}{t.attachment && <div><FileLink att={t.attachment} /></div>}{t.decision_note && <div className="text-red-600">Note: {t.decision_note}</div>}</td>
-                <td><StatusBadge status={t.status} /></td>
+                <td><StatusBadge status={t.status} />{t.status === 'Rejected' && t.decision_note && <div className="mt-1 max-w-48 text-xs text-red-600">{t.decision_note}</div>}</td>
                 <td className="whitespace-nowrap text-xs">{name(t.created_by)}{t.decided_by && <div className="text-slate-500">✓ {name(t.decided_by)}</div>}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        {rows.length === 0 && <Empty>No transactions.</Empty>}
+        {rows.length === 0 && <Empty>{month ? `No transactions in ${monthLabel(month)}.` : 'No transactions.'}</Empty>}
       </div>
+      <p className="mt-2 text-xs text-slate-500">{rows.length} transactions{month ? ` in ${monthLabel(month)}` : ''} · approved value {mmk(total)}</p>
     </>
   );
 }
@@ -239,7 +287,7 @@ function ItemModal({ item, onClose }: { item?: Item; onClose: () => void }) {
   const { actions } = useData();
   const toast = useToast();
   const [f, setF] = useState({
-    code: item?.code ?? '', name: item?.name ?? '', category: item?.category ?? ('Refreshments' as Category), classification: item?.classification ?? 'Consumable',
+    name: item?.name ?? '', category: item?.category ?? ('Refreshments' as Category), classification: item?.classification ?? 'Consumable',
     unit: item?.unit ?? 'Piece', unit_cost: String(item?.unit_cost ?? ''), min_level: String(item?.min_level ?? ''), active: item?.active ?? true,
   });
   const { busy, error, run } = useSubmit();
@@ -263,7 +311,6 @@ function ItemModal({ item, onClose }: { item?: Item; onClose: () => void }) {
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Code" required><input className="input" value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })} /></Field>
         <Field label="Unit" required><input className="input" value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} /></Field>
         <Field label="Name" required className="sm:col-span-2"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         <Field label="Category"><select className="input" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value as Category })}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></Field>
@@ -278,11 +325,11 @@ function ItemModal({ item, onClose }: { item?: Item; onClose: () => void }) {
   );
 }
 
-function CountTab() {
+function CountTab({ month: viewMonth }: { month: string }) {
   const { data, actions, can, name } = useData();
   const toast = useToast();
   const [cat, setCat] = useState<Category>('Refreshments');
-  const [month, setMonth] = useState(thisMonth());
+  const [month, setMonth] = useState(viewMonth || thisMonth());
   const [counted, setCounted] = useState<Record<string, string>>({});
   const [note, setNote] = useState('');
   const { busy, error, run } = useSubmit();
@@ -334,14 +381,14 @@ function CountTab() {
           <table className="tbl">
             <thead><tr><th>Ref</th><th>Month</th><th>Counted by</th><th className="num">Items</th><th className="num">Variances</th><th className="num">Net variance value</th><th>Note</th></tr></thead>
             <tbody>
-              {[...data.physical_counts].reverse().map((c) => {
+              {[...data.physical_counts].filter((c) => !viewMonth || c.month === viewMonth).reverse().map((c) => {
                 const v = c.lines.filter((l) => l.counted_qty !== l.system_qty);
                 const val = v.reduce((s, l) => s + (l.counted_qty - l.system_qty) * (data.items.find((i) => i.id === l.item_id)?.unit_cost ?? 0), 0);
-                return <tr key={c.id}><td className="font-medium text-navy-800">{c.ref}</td><td>{c.month}</td><td>{name(c.created_by)} <div className="text-xs text-slate-500">{dateTime(c.created_at)}</div></td><td className="num">{c.lines.length}</td><td className="num">{v.length}</td><td className="num">{mmk(val)}</td><td className="text-xs">{c.note}</td></tr>;
+                return <tr key={c.id}><td className="font-medium text-navy-800">{c.ref}</td><td className="whitespace-nowrap">{monthLabel(c.month)}</td><td>{name(c.created_by)} <div className="text-xs text-slate-500">{dateTime(c.created_at)}</div></td><td className="num">{c.lines.length}</td><td className="num">{v.length}</td><td className="num">{mmk(val)}</td><td className="text-xs">{c.note}</td></tr>;
               })}
             </tbody>
           </table>
-          {data.physical_counts.length === 0 && <Empty>No physical counts recorded yet.</Empty>}
+          {!data.physical_counts.some((c) => !viewMonth || c.month === viewMonth) && <Empty>{viewMonth ? `No physical count in ${monthLabel(viewMonth)}.` : 'No physical counts recorded yet.'}</Empty>}
         </div>
       </div>
     </div>

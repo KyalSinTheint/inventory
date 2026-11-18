@@ -3,9 +3,9 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AlertTriangle, Boxes, CheckCircle2, CheckSquare, FileBarChart, Lock, Monitor, PackageX, Wallet } from 'lucide-react';
 import { useData } from '../lib/store';
 import { approvalCounts, lowStockItems, retentionAlerts } from '../lib/alerts';
-import { batchActual, depositTotals, isLowStock, utilizationPct, yearActual } from '../lib/logic';
+import { depositTotals, isLowStock, utilizationPct, yearActual } from '../lib/logic';
 import { date, mmk, num, today } from '../lib/format';
-import { Badge, Button, Card, Empty, Gauge, PageHeader, StatusBadge } from '../components/ui';
+import { Badge, Button, Card, Empty, PageHeader } from '../components/ui';
 import { CATEGORIES, ROLE_LABELS, type Role } from '../lib/types';
 import { cx } from '../components/ui';
 import { Coffee, GraduationCap, Package, Paperclip as Clip } from 'lucide-react';
@@ -29,7 +29,6 @@ export default function Dashboard() {
   const year = new Date().getFullYear();
   const budget = data.budgets.find((b) => b.fiscal_year === year && (b.category ?? 'Overall') === 'Overall')?.amount ?? 0;
   const spent = yearActual(year, data.stock_txns, data.expenses).total;
-  const activeBatches = data.batches.filter((b) => b.status !== 'Planned' && b.budget > 0).slice(-4).reverse();
   const batchName = (id: string) => data.batches.find((b) => b.id === id)?.code ?? '';
   const assetsLive = data.assets.filter((a) => a.status !== 'Retired' && a.status !== 'Lost').length;
   const assetsOut = data.assets.filter((a) => a.status === 'Checked Out').length;
@@ -171,7 +170,7 @@ export default function Dashboard() {
                 <li key={i.id} className="flex items-center gap-3 px-4 py-2.5">
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-navy-900">{i.name}</div>
-                    <div className="text-xs text-slate-500">{i.code} · {i.category}</div>
+                    <div className="text-xs text-slate-500">{i.category}</div>
                   </div>
                   <div className="text-right text-sm tabular-nums">
                     <span className="font-mono font-bold text-kbz-red">{num(i.qty_on_hand)}</span>
@@ -181,33 +180,6 @@ export default function Dashboard() {
               ))}
             </ul>
           )}
-        </Card>
-      </div>
-
-      <Card title="Expense & budget utilisation" actions={<Link className="text-xs font-semibold text-kbz-navy hover:underline" to="/budget">Details →</Link>}>
-        <div className="grid grid-cols-2 gap-6 lg:grid-cols-5">
-          <Gauge value={utilizationPct(budget, spent)} label={`Overall FY${year}`} sub={budget ? `${mmk(spent)} of ${mmk(budget)}` : 'No budget set'} />
-          {activeBatches.map((b) => {
-            const a = batchActual(b.id, data.stock_txns, data.expenses).total;
-            return <Gauge key={b.id} value={utilizationPct(b.budget, a)} label={b.code} sub={`${mmk(a)} of ${mmk(b.budget)}`} />;
-          })}
-        </div>
-      </Card>
-
-      <div className="mt-6">
-        <Card title="Recent deposit activity" padded={false}>
-          <div className="overflow-x-auto">
-            <table className="tbl">
-              <thead><tr><th>Deposit</th><th>Trainee</th><th>Status</th><th className="num">Amount</th></tr></thead>
-              <tbody>
-                {[...data.deposits].sort((a, b) => (b.requested_at ?? b.created_at).localeCompare(a.requested_at ?? a.created_at)).slice(0, 6).map((d) => (
-                  <tr key={d.id} className="cursor-pointer" onClick={() => nav(`/deposits/${d.id}`)}>
-                    <td className="font-medium text-navy-800">{d.ref}</td><td>{d.trainee_name}</td><td><StatusBadge status={d.status} /></td><td className="num">{mmk(d.amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </Card>
       </div>
     </>

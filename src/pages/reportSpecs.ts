@@ -33,7 +33,7 @@ export function stockMovementReport(data: DataSet, from: string, to: string, by:
     summary: [['Items', String(rows.length)], ['Closing valuation', mmk(rows.reduce((s, r) => s + r.value, 0))],
       ['Items at or below minimum', String(rows.filter((r) => r.closing <= r.item.min_level).length)]],
     columns: [
-      { header: 'Code', value: (r) => r.item.code }, { header: 'Item', value: (r) => r.item.name }, { header: 'Category', value: (r) => r.item.category },
+      { header: 'Item', value: (r) => r.item.name }, { header: 'Category', value: (r) => r.item.category },
       { header: 'Opening', value: (r) => r.opening, numeric: true }, { header: 'In', value: (r) => r.inQty, numeric: true },
       { header: 'Out', value: (r) => r.outQty, numeric: true }, { header: 'Returned', value: (r) => r.returned, numeric: true },
       { header: 'Adjusted', value: (r) => r.adjusted, numeric: true }, { header: 'Closing', value: (r) => r.closing, numeric: true },

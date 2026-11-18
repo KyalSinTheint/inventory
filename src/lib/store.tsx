@@ -105,21 +105,28 @@ function makeActions(
   return {
     // ------------------------------------------------------------ master data
     /** photo: a File to upload, null to remove the photo, undefined to keep it. */
-    async saveItem(input: Omit<Item, 'id' | 'created_at' | 'qty_on_hand' | 'photo'> & { id?: string }, photo?: File | null) {
+    async saveItem(input: Omit<Item, 'id' | 'created_at' | 'qty_on_hand' | 'photo' | 'code'> & { id?: string; code?: string }, photo?: File | null) {
       need('item.manage');
-      if (!input.name.trim() || !input.code.trim()) throw new RuleError('Item code and name are required.');
+      if (!input.name.trim()) throw new RuleError('Item name is required.');
+      // Codes are no longer shown or typed; keep an existing one, otherwise assign the next one for the category.
+      const existingItem = input.id ? get().data.items.find((i) => i.id === input.id) : undefined;
+      const prefix = ({ Refreshments: 'RF', 'Training Materials': 'TM', 'YCP Program': 'YCP', 'Office Supplies': 'OS' } as Record<string, string>)[input.category] ?? 'IT';
+      const nextNo = 1 + get().data.items.filter((i) => i.code.startsWith(`${prefix}-`)).reduce((m, i) => Math.max(m, parseInt(i.code.slice(prefix.length + 1), 10) || 0), 0);
+      input = { ...input, code: input.code?.trim() || existingItem?.code || `${prefix}-${String(nextNo).padStart(3, '0')}` };
+      if (get().data.items.some((i) => i.name.trim().toLowerCase() === input.name.trim().toLowerCase() && i.category === input.category && i.id !== input.id)) {
+        throw new RuleError(`"${input.name.trim()}" already exists in ${input.category}.`);
+      }
       if (input.unit_cost < 0 || input.min_level < 0) throw new RuleError('Cost and minimum level cannot be negative.');
-      const dup = get().data.items.find((i) => i.code.toLowerCase() === input.code.trim().toLowerCase() && i.id !== input.id);
-      if (dup) throw new RuleError(`Item code ${input.code} is already used by ${dup.name}.`);
+      const code = input.code!;
       const photoPatch: Partial<Item> = photo === undefined ? {} : { photo: photo ? await db.upload(await compressImage(photo)) : null };
       if (input.id) {
         const { id, ...patch } = input;
-        const saved = await update('items', id, { ...patch, ...photoPatch, code: patch.code.trim(), name: patch.name.trim() });
-        await audit('Update', 'item', id, `${saved.code} ${saved.name}`);
+        const saved = await update('items', id, { ...patch, ...photoPatch, code, name: patch.name.trim() });
+        await audit('Update', 'item', id, saved.name);
         return saved;
       }
-      const saved = await insert('items', { ...input, photo: null, ...photoPatch, id: uid(), code: input.code.trim(), name: input.name.trim(), qty_on_hand: 0, created_at: nowIso() });
-      await audit('Create', 'item', saved.id, `${saved.code} ${saved.name}`);
+      const saved = await insert('items', { ...input, photo: null, ...photoPatch, id: uid(), code, name: input.name.trim(), qty_on_hand: 0, created_at: nowIso() });
+      await audit('Create', 'item', saved.id, `${saved.name} (${saved.category})`);
       return saved;
     },
     async saveBatch(input: Omit<Batch, 'id' | 'created_at'> & { id?: string }) {
