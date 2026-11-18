@@ -19,12 +19,13 @@ export default function LoginPage({ loadError }: { loadError: string | null }) {
   })().filter((p: { active: boolean }) => p.active) : [];
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-navy-950 via-navy-900 to-navy-700 px-4 py-10">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-kbz-dark via-kbz-navy to-kbz-blue px-4 py-10">
       <div className="w-full max-w-md">
         <div className="mb-6 text-center text-white">
-          <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-silver-200 to-white text-lg font-bold text-navy-900 shadow-lg">L&D</div>
+          <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-kbz-red text-lg font-extrabold tracking-tight text-white shadow-lg">KBZ</div>
+          <div className="mb-2 inline-block rounded bg-white/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-200">L&amp;D Portal</div>
           <h1 className="text-xl font-semibold">Training Resource, Inventory & License Deposit Portal</h1>
-          <p className="mt-1 text-sm text-silver-300">KBZ Life Insurance · Learning & Development</p>
+          <p className="mt-1 text-sm text-slate-300">KBZ Life Insurance · Learning & Development</p>
         </div>
         <div className="rounded-2xl bg-white p-6 shadow-xl">
           {user && !user.active && <ErrorNote error="Your account is not active. New accounts must be activated by the System Administrator, who also assigns your role." />}
@@ -36,9 +37,9 @@ export default function LoginPage({ loadError }: { loadError: string | null }) {
               <div className="mt-4 grid gap-2">
                 {demoUsers.map((p: { id: string; name: string; role: keyof typeof ROLE_LABELS; email: string }) => (
                   <button key={p.id} onClick={() => run(() => demoSignIn(p.id))}
-                    className="flex items-center justify-between rounded-lg border border-silver-200 px-3 py-2.5 text-left hover:border-navy-600 hover:bg-navy-50">
+                    className="flex items-center justify-between rounded-xl border-2 border-slate-200 px-3 py-2.5 text-left transition hover:border-kbz-navy hover:bg-navy-50">
                     <span><span className="block text-sm font-medium text-navy-900">{p.name}</span><span className="text-xs text-slate-500">{p.email}</span></span>
-                    <span className="rounded-full bg-navy-100 px-2 py-0.5 text-xs font-medium text-navy-800">{ROLE_LABELS[p.role]}</span>
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-kbz-navy">{ROLE_LABELS[p.role]}</span>
                   </button>
                 ))}
               </div>

@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useData } from '../lib/store';
@@ -10,7 +11,8 @@ import { Button, Empty, ErrorNote, Field, Modal, PageHeader, StatusBadge, useSub
 
 export default function RequestsPage() {
   const { data, can, name } = useData();
-  const [edit, setEdit] = useState<MaterialRequest | 'new' | null>(null);
+  const [params] = useSearchParams();
+  const [edit, setEdit] = useState<MaterialRequest | 'new' | null>(() => (params.get('new') === '1' && can('request.create') ? 'new' : null));
   const [status, setStatus] = useState('');
   const batch = (id: string) => data.batches.find((b) => b.id === id);
   const item = (id: string) => data.items.find((i) => i.id === id);

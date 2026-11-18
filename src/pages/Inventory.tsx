@@ -15,7 +15,7 @@ export default function InventoryPage() {
   const { can } = useData();
   const [params] = useSearchParams();
   const [tab, setTab] = useState<Tab>('items');
-  const [modal, setModal] = useState<null | 'in' | 'return' | 'adjust' | { item?: Item }>(null);
+  const [modal, setModal] = useState<null | 'in' | 'return' | 'adjust' | { item?: Item }>(() => (params.get('stockin') === '1' && can('stock.create') ? 'in' : null));
   return (
     <>
       <PageHeader title="Inventory" subtitle="Refreshments, training materials, YCP merchandise and office supplies"

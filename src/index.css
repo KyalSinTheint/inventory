@@ -2,22 +2,34 @@
 
 @theme {
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Myanmar Text', 'Pyidaungsu', sans-serif;
-  --color-navy-950: #071a33;
-  --color-navy-900: #0b2545;
-  --color-navy-800: #13315c;
-  --color-navy-700: #1b3f73;
-  --color-navy-600: #24518f;
-  --color-navy-100: #e3ebf6;
-  --color-navy-50: #f1f5fb;
-  --color-silver-500: #8d97a5;
-  --color-silver-300: #c3cad4;
-  --color-silver-200: #dde2e9;
-  --color-silver-100: #eef1f5;
-  --color-page: #f4f6fa;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* KBZ Life corporate palette (matches the Gemini L&D portal) */
+  --color-kbz-dark: #0a2540;
+  --color-kbz-navy: #002d72;
+  --color-kbz-blue: #0047ab;
+  --color-kbz-red: #e31837;
+  --color-kbz-red-dark: #b8102a;
+  --color-navy-950: #061a33;
+  --color-navy-900: #0a2540;
+  --color-navy-800: #002d72;
+  --color-navy-700: #0047ab;
+  --color-navy-600: #1d5fc4;
+  --color-navy-100: #e5edf9;
+  --color-navy-50: #f1f5fc;
+  --color-silver-500: #94a3b8;
+  --color-silver-300: #cbd5e1;
+  --color-silver-200: #e2e8f0;
+  --color-silver-100: #f1f5f9;
+  --color-page: #f4f6f9;
 }
 
 @layer base {
-  html { background: var(--color-page); color: #1d2635; -webkit-text-size-adjust: 100%; }
+  html { background: var(--color-page); color: #0f172a; -webkit-text-size-adjust: 100%; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #f1f5f9; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  ::selection { background: var(--color-kbz-navy); color: #fff; }
   body { margin: 0; min-height: 100vh; background: var(--color-page); }
   input, select, textarea, button { font: inherit; }
   :focus-visible { outline: 2px solid var(--color-navy-600); outline-offset: 2px; }
@@ -25,14 +37,14 @@
 
 @layer components {
   .input {
-    @apply w-full rounded-lg border border-silver-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-xs
-      placeholder:text-silver-500 focus:border-navy-600 focus:outline-none focus:ring-2 focus:ring-navy-100 disabled:bg-silver-100;
+    @apply w-full rounded-xl border border-silver-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-xs
+      placeholder:text-silver-500 focus:border-kbz-navy focus:outline-none focus:ring-2 focus:ring-kbz-navy/25 disabled:bg-silver-100;
   }
-  .table-wrap { @apply overflow-x-auto rounded-xl border border-silver-200 bg-white; }
+  .table-wrap { @apply overflow-x-auto rounded-2xl border border-silver-200 bg-white shadow-2xs; }
   .tbl { @apply w-full text-left text-sm; }
-  .tbl th { @apply whitespace-nowrap border-b border-silver-200 bg-silver-100 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500; }
+  .tbl th { @apply whitespace-nowrap border-b border-silver-200 bg-slate-50 px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-500; }
   .tbl td { @apply border-b border-silver-100 px-3 py-2.5 align-top; }
   .tbl tbody tr:last-child td { @apply border-b-0; }
-  .tbl tbody tr:hover td { @apply bg-navy-50/60; }
-  .num { @apply text-right tabular-nums whitespace-nowrap; }
+  .tbl tbody tr:hover td { @apply bg-navy-50; }
+  .num { @apply text-right font-mono text-[13px] tabular-nums whitespace-nowrap; }
 }

@@ -17,7 +17,7 @@ export default function DepositsPage() {
   const { data, can, settings, user } = useData();
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState('');
-  const [showNew, setShowNew] = useState(false);
+  const [showNew, setShowNew] = useState(() => params.get('new') === '1' && can('deposit.create'));
   const nav = useNavigate();
   const status = params.get('status') ?? '';
   const batch = params.get('batch') ?? '';
