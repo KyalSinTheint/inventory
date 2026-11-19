@@ -90,12 +90,10 @@ function ItemsTable({ rows, month, moves, onEdit }: { rows: Item[]; month: strin
   );
 }
 
-/** Brand colour per inventory category, used on the item cards and details. */
-const CAT_TONE: Record<Category, { band: string; text: string; btn: string; soft: string }> = {
-  Refreshments: { band: 'from-[#0c4f7a] to-[#1590cc]', text: 'text-[#12669e]', btn: 'bg-[#12669e] hover:bg-[#0c4f7a]', soft: 'bg-[#e6f2fa]' },
-  'Training Materials': { band: 'from-[#002d72] to-[#0047ab]', text: 'text-kbz-navy', btn: 'bg-kbz-navy hover:bg-kbz-blue', soft: 'bg-navy-50' },
-  'YCP Program': { band: 'from-[#0a5459] to-[#0f7c80]', text: 'text-[#0d6b6f]', btn: 'bg-[#0d6b6f] hover:bg-[#0a5459]', soft: 'bg-[#e4f3f3]' },
-  'Office Supplies': { band: 'from-[#3a3f46] to-[#5f656d]', text: 'text-[#4a5058]', btn: 'bg-[#4a5058] hover:bg-[#3a3f46]', soft: 'bg-slate-100' },
+/** Item cards and details use one neutral style (white card, KBZ blue price). */
+const NEUTRAL = { band: '', text: 'text-kbz-blue', soft: 'bg-navy-50' };
+const CAT_TONE: Record<Category, typeof NEUTRAL> = {
+  Refreshments: NEUTRAL, 'Training Materials': NEUTRAL, 'YCP Program': NEUTRAL, 'Office Supplies': NEUTRAL,
 };
 const pieceLabel = (i: Item) => i.piece_unit || 'piece';
 const plural = (n: number, w: string) => (n === 1 || w.endsWith('s') ? w : `${w}s`);
@@ -174,7 +172,15 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit, onStockIn }: {
         <>
           <h3 className="mb-3 text-base font-bold text-kbz-dark">Choose a main item <span className="text-sm font-normal text-slate-500">· {groups.length} groups</span></h3>
           {groups.length === 0 ? <Empty>No items match.</Empty> : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6" role="list" aria-label="Main items">
+            <div className="relative isolate">
+            {/* soft brand-colour light behind the glass cards */}
+            <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[2rem]">
+              <div className="absolute -left-10 top-0 h-72 w-72 rounded-full bg-[#20a0d8]/55 blur-3xl" />
+              <div className="absolute right-0 top-1/4 h-80 w-80 rounded-full bg-kbz-navy/40 blur-3xl" />
+              <div className="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-[#0f7c80]/35 blur-3xl" />
+              <div className="absolute -bottom-10 right-1/4 h-60 w-60 rounded-full bg-[#8fd3f2]/60 blur-3xl" />
+            </div>
+            <div className="grid grid-cols-2 gap-4 p-1 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6" role="list" aria-label="Main items">
               {groups.map(({ g, count, low: lowN }) => (
                 <GroupCard key={g.id} label={g.label} count={count} low={lowN} onClick={() => setGroup(g.id)} Icon={g.icon}
                   onEdit={manage ? () => setGroupModal({ group: g }) : undefined} />
@@ -182,11 +188,12 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit, onStockIn }: {
               <GroupCard label="All items" count={inCat.length} onClick={() => setGroup('all')} Icon={LayoutGrid} muted />
               {manage && (
                 <button onClick={() => setGroupModal({})}
-                  className="flex flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-slate-300 px-3 py-6 text-center text-slate-500 transition hover:border-kbz-navy hover:text-kbz-navy">
-                  <span className="grid h-20 w-20 place-items-center rounded-full bg-white ring-1 ring-slate-200"><Plus className="h-9 w-9" strokeWidth={1.4} /></span>
+                  className="flex flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-white/80 bg-white/25 px-3 py-6 text-center text-kbz-navy backdrop-blur-xl transition hover:bg-white/50">
+                  <span className="grid h-20 w-20 place-items-center rounded-full bg-gradient-to-br from-white/90 to-white/40 ring-1 ring-white/80 shadow-[inset_0_1px_8px_rgba(255,255,255,0.8)]"><Plus className="h-9 w-9" strokeWidth={1.4} /></span>
                   <span className="text-sm font-semibold">New main item</span>
                 </button>
               )}
+            </div>
             </div>
           )}
         </>
@@ -235,14 +242,17 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit, onStockIn }: {
 function GroupCard({ label, count, low, onClick, Icon, muted, onEdit }: { label: string; count: number; low?: number; onClick: () => void; Icon: LucideIcon; muted?: boolean; onEdit?: () => void }) {
   const card = (
     <button onClick={onClick} role="listitem" aria-label={`${label}, ${count} item${count === 1 ? '' : 's'}${low ? `, ${low} low stock` : ''}`}
-      className={cx('group relative flex h-full w-full flex-col items-center gap-3 rounded-3xl px-3 py-6 text-center shadow-[0_8px_24px_-14px_rgba(15,23,42,0.3)] transition hover:-translate-y-0.5 hover:bg-kbz-navy hover:text-white hover:shadow-[0_14px_30px_-14px_rgba(0,45,114,0.8)]',
-        muted ? 'bg-slate-100 text-slate-600' : 'bg-white text-kbz-dark')}>
-      {!!low && <span className="absolute right-3 top-3 rounded-full bg-kbz-red px-2 py-0.5 text-[10px] font-bold text-white">{low} low</span>}
-      <span className="grid h-20 w-20 place-items-center rounded-full bg-slate-50 ring-1 ring-slate-100 transition group-hover:bg-white group-hover:text-kbz-navy">
+      className={cx('group relative flex h-full w-full flex-col items-center gap-3 overflow-hidden rounded-3xl border border-white/70 px-3 py-6 text-center backdrop-blur-xl transition duration-300',
+        'shadow-[0_10px_30px_-12px_rgba(0,45,114,0.28),inset_0_1px_0_rgba(255,255,255,0.9)] hover:-translate-y-1 hover:bg-white/70 hover:shadow-[0_18px_40px_-14px_rgba(0,45,114,0.4),inset_0_1px_0_rgba(255,255,255,0.9)]',
+        muted ? 'bg-white/30 text-slate-600' : 'bg-white/45 text-kbz-dark')}>
+      {/* glass shine */}
+      <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/60 to-transparent" />
+      {!!low && <span className="absolute right-3 top-3 z-10 rounded-full bg-kbz-red px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">{low} low</span>}
+      <span className="relative grid h-20 w-20 place-items-center rounded-full bg-gradient-to-br from-white/95 to-white/40 text-kbz-navy ring-1 ring-white/80 shadow-[inset_0_1px_8px_rgba(255,255,255,0.9),0_8px_18px_-10px_rgba(0,45,114,0.45)] transition group-hover:from-kbz-navy group-hover:to-kbz-blue group-hover:text-white">
         <Icon className="h-9 w-9" strokeWidth={1.4} />
       </span>
-      <span className="text-sm font-semibold leading-tight">{label}</span>
-      <span className="-mt-2 text-[11px] text-slate-400 transition group-hover:text-white/70">{count} item{count === 1 ? '' : 's'}</span>
+      <span className="relative text-sm font-semibold leading-tight">{label}</span>
+      <span className="relative -mt-2 text-[11px] text-slate-500">{count} item{count === 1 ? '' : 's'}</span>
     </button>
   );
   if (!onEdit) return card;
@@ -342,7 +352,7 @@ function ItemDetailModal({ item: i, qty, onClose, onEdit, onStockIn }: { item: I
       {can('request.create') && i.active && <Button disabled={out} onClick={() => nav(`/requests?new=1&item=${i.id}`)}><ShoppingBasket className="h-4 w-4" />Request</Button>}
     </>}>
       <div className="grid gap-5 sm:grid-cols-[13rem_1fr]">
-        <div className={cx('rounded-2xl bg-gradient-to-br p-2.5', tone.band)}>
+        <div className="rounded-2xl p-2.5 ring-1 ring-slate-200">
           <div className="grid h-48 place-items-center overflow-hidden rounded-xl bg-white">
             {url ? <img src={url} alt={i.name} className="h-48 w-full object-contain" />
               : <span className={cx('grid h-24 w-24 place-items-center rounded-full', tone.soft, tone.text)}><g.icon className="h-12 w-12" strokeWidth={1.25} /></span>}
@@ -440,16 +450,15 @@ function ProductCard({ item: i, qty, onEdit, onOpen, showGroup }: { item: Item; 
   };
   const photoInput = canPhoto && <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={uploading} onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ''; }} />;
   return (
-    <div className={cx('group relative flex flex-col overflow-hidden rounded-2xl bg-white shadow-[0_8px_24px_-14px_rgba(0,45,114,0.45)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_32px_-16px_rgba(0,45,114,0.55)]', !i.active && 'opacity-60')}>
-      {/* coloured top with the photo on a white tile */}
-      <div className={cx('relative bg-gradient-to-br p-3', tone.band)}>
+    <div className={cx('group relative flex flex-col overflow-hidden rounded-2xl bg-white shadow-[0_6px_22px_-12px_rgba(15,23,42,0.3)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-14px_rgba(15,23,42,0.35)]', !i.active && 'opacity-60')}>
+      <div className="relative p-3 pb-0">
         {(out || isLow || !i.active) && (
-          <span className={cx('absolute left-3 top-3 z-10 rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase shadow-sm', out || isLow ? 'text-kbz-red' : 'text-slate-600')}>
+          <span className={cx('absolute left-3 top-3 z-10 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', !i.active ? 'bg-slate-200 text-slate-600' : out ? 'bg-slate-700 text-white' : 'bg-rose-100 text-kbz-red')}>
             {!i.active ? 'Inactive' : out ? 'Out of stock' : 'Low stock'}
           </span>
         )}
         {onEdit && (
-          <button onClick={onEdit} className="absolute right-3 top-3 z-10 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-slate-500 shadow-sm hover:text-kbz-navy" aria-label={`Edit ${i.name}`}>
+          <button onClick={onEdit} className="absolute right-3 top-3 z-10 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-slate-400 ring-1 ring-slate-200 hover:text-kbz-navy" aria-label={`Edit ${i.name}`}>
             <Pencil className="h-3.5 w-3.5" />
           </button>
         )}
@@ -474,9 +483,8 @@ function ProductCard({ item: i, qty, onEdit, onOpen, showGroup }: { item: Item; 
           )}
         </div>
       </div>
-      {/* text */}
       <div className="flex flex-1 flex-col p-3">
-        <div className={cx('text-[11px] font-semibold', tone.text)}>{showGroup ? `${g.label} · ` : ''}{i.unit}{i.pack_qty ? ` of ${i.pack_qty} ${plural(i.pack_qty, pieceLabel(i))}` : ''}</div>
+        <div className="text-[11px] text-slate-400">{showGroup ? `${g.label} · ` : ''}{i.unit}{i.pack_qty ? ` of ${i.pack_qty} ${plural(i.pack_qty, pieceLabel(i))}` : ''}</div>
         <button onClick={onOpen} className="mt-0.5 line-clamp-2 min-h-[2.5rem] text-left text-sm font-semibold leading-snug text-kbz-dark hover:underline">{i.name}</button>
         <div className="mt-auto flex items-end justify-between gap-2 pt-2">
           <div className="min-w-0">
@@ -484,7 +492,7 @@ function ProductCard({ item: i, qty, onEdit, onOpen, showGroup }: { item: Item; 
             <div className={cx('text-[11px] font-semibold tabular-nums', out || isLow ? 'text-kbz-red' : 'text-emerald-700')}>{num(qty)} in stock</div>
           </div>
           <button onClick={onOpen} aria-label={`Details of ${i.name}`}
-            className={cx('inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-xs font-semibold text-white transition', tone.btn)}>
+            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-kbz-dark transition hover:bg-kbz-navy hover:text-white">
             <Info className="h-3.5 w-3.5" />Details
           </button>
         </div>
