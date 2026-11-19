@@ -40,6 +40,16 @@ export interface Item {
   created_at: string;
 }
 
+/** A saved main item: a custom group, or a built-in one whose name / icon was changed (same id). */
+export interface ItemGroupRow {
+  id: string;
+  label: string;
+  category: Category;
+  /** lucide icon name, e.g. 'Coffee' */
+  icon: string;
+  created_at: string;
+}
+
 export const PROGRAMS = ['License', 'YCP', 'Product & Soft Skills', 'Corporate', 'Agency'] as const;
 export type Program = (typeof PROGRAMS)[number];
 
@@ -292,6 +302,7 @@ export interface Settings {
 export interface Tables {
   profiles: Profile;
   items: Item;
+  item_groups: ItemGroupRow;
   batches: Batch;
   stock_txns: StockTxn;
   material_requests: MaterialRequest;
@@ -308,7 +319,7 @@ export interface Tables {
 
 export type TableName = keyof Tables;
 export const TABLE_NAMES: TableName[] = [
-  'profiles', 'items', 'batches', 'stock_txns', 'material_requests', 'physical_counts', 'assets',
+  'profiles', 'items', 'item_groups', 'batches', 'stock_txns', 'material_requests', 'physical_counts', 'assets',
   'asset_logs', 'deposits', 'deposit_status_log', 'expenses', 'budgets', 'audit_logs', 'settings',
 ];
 

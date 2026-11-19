@@ -1,14 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createAdapter, type DataAdapter } from './db';
 import { compressImage } from './files';
-import { guessGroup } from './itemGroups';
+import { BUILTIN_IDS, groupOf, groupsFor, guessGroup, ICONS } from './itemGroups';
 import {
   applyDelta, budgetCategory, can, checkAvailability, depositTransition, isValidNrc, nextRef, validateTrainingDates, normalizeNrc, RuleError, stockDelta, validateLines, validateNewDeposit,
   type DepositAction, type Permission,
 } from './logic';
 import type {
-  Asset, AssetAction, AssetCondition, Attachment, Batch, Budget, CountLine, DataSet, Deposit, Expense, Item, MaterialRequest, PhysicalCount,
-  Profile, RequestLine, ReturnCondition, Role, Settings, StockTxn, TableName, Tables,
+  Asset, AssetAction, AssetCondition, Attachment, Batch, Budget, Category, CountLine, DataSet, Deposit, Expense, Item, MaterialRequest, PhysicalCount, Profile, RequestLine, ReturnCondition, Role, Settings, StockTxn, TableName, Tables,
 } from './types';
 
 const uid = () => crypto.randomUUID();
@@ -129,6 +128,39 @@ function makeActions(
       const saved = await insert('items', { ...input, photo: null, ...photoPatch, id: uid(), code, name: input.name.trim(), qty_on_hand: 0, created_at: nowIso() });
       await audit('Create', 'item', saved.id, `${saved.name} (${saved.category})`);
       return saved;
+    },
+    /** Create a main item, or rename / change the icon of an existing one (built-in or custom). */
+    async saveItemGroup(input: { id?: string; label: string; category: Category; icon: string }) {
+      need('item.manage');
+      const label = input.label.trim();
+      if (!label) throw new RuleError('Main item name is required.');
+      if (!ICONS[input.icon]) throw new RuleError('Choose an icon.');
+      const clash = groupsFor(input.category, get().data.item_groups).find((g) => g.label.toLowerCase() === label.toLowerCase() && g.id !== input.id);
+      if (clash) throw new RuleError(`"${label}" already exists in ${input.category}.`);
+      const existing = input.id ? get().data.item_groups.find((r) => r.id === input.id) : undefined;
+      if (existing) {
+        const saved = await update('item_groups', existing.id, { label, icon: input.icon, category: existing.category });
+        await audit('Update', 'main item', saved.id, `${saved.label} (${saved.icon})`);
+        return saved;
+      }
+      // A built-in being customised keeps its id; a brand-new main item gets a fresh one.
+      const id = input.id && BUILTIN_IDS.has(input.id) ? input.id : `custom-${uid().slice(0, 8)}`;
+      const category = input.id && BUILTIN_IDS.has(input.id) ? groupsFor('').find((g) => g.id === input.id)!.category : input.category;
+      const saved = await insert('item_groups', { id, label, category, icon: input.icon, created_at: nowIso() });
+      await audit(input.id ? 'Update' : 'Create', 'main item', saved.id, `${saved.label} (${saved.icon})`);
+      return saved;
+    },
+    async deleteItemGroup(id: string) {
+      need('item.manage');
+      if (BUILTIN_IDS.has(id)) throw new RuleError('Built-in main items cannot be deleted (you can rename them or change the icon).');
+      const saved = get().data.item_groups;
+      const g = saved.find((r) => r.id === id);
+      if (!g) throw new RuleError('Main item not found.');
+      const used = get().data.items.filter((i) => groupOf(i, saved).id === id).length;
+      if (used) throw new RuleError(`Move the ${used} item(s) in "${g.label}" to another main item first.`);
+      await db.remove('item_groups', id);
+      set((d) => ({ ...d, item_groups: d.item_groups.filter((r) => r.id !== id) }));
+      await audit('Delete', 'main item', id, g.label);
     },
     async saveBatch(input: Omit<Batch, 'id' | 'created_at' | 'code'> & { id?: string; code?: string }) {
       need('batch.manage');

@@ -258,7 +258,7 @@ export function buildSeed(): DataSet {
   const settings: Settings[] = [{ id: 'settings', retention_alert_months: 11, service_term_months: 12, low_stock_warning_pct: 0, updated_at: now }];
 
   return {
-    profiles, items, batches, stock_txns, material_requests, physical_counts: [], assets, asset_logs, deposits,
+    profiles, items, item_groups: [], batches, stock_txns, material_requests, physical_counts: [], assets, asset_logs, deposits,
     deposit_status_log, expenses, budgets, settings,
     audit_logs: [{ id: id('aud'), user_id: 'u-admin', user_name: 'Portal Admin', action: 'Seed', entity: 'system', entity_id: null, details: 'Demo data loaded', ip: 'demo', created_at: now }],
   };

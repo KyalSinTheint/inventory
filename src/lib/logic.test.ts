@@ -226,3 +226,23 @@ test('main item groups: every sample item lands in a sensible group', async () =
   // a saved choice wins over the name
   assert.equal(groupOf({ name: 'Coffee - Royal', category: 'Refreshments', item_group: 'tea' }).id, 'tea');
 });
+
+test('main items: saved rows rename / re-icon built-ins and add custom groups', async () => {
+  const { groupsFor, groupOf, iconFor, ICONS } = await import('./itemGroups');
+  const saved = [
+    { id: 'coffee', label: 'Coffee & Espresso', category: 'Refreshments' as const, icon: 'CupSoda', created_at: NOW },
+    { id: 'custom-1', label: 'Juice', category: 'Refreshments' as const, icon: 'Apple', created_at: NOW },
+    { id: 'custom-2', label: 'Prizes', category: 'Training Materials' as const, icon: 'Trophy', created_at: NOW },
+  ];
+  const refresh = groupsFor('Refreshments', saved);
+  const coffee = refresh.find((g) => g.id === 'coffee')!;
+  assert.equal(coffee.label, 'Coffee & Espresso');
+  assert.equal(coffee.icon, ICONS.CupSoda);
+  assert.ok(refresh.some((g) => g.id === 'custom-1' && g.custom && g.icon === ICONS.Apple));
+  assert.ok(!refresh.some((g) => g.id === 'custom-2'), 'custom groups stay in their own category');
+  // an item assigned to a custom group lands there; unknown / deleted group falls back to the name
+  assert.equal(groupOf({ name: 'Orange Juice', category: 'Refreshments', item_group: 'custom-1' }, saved).id, 'custom-1');
+  assert.equal(groupOf({ name: 'Orange Juice', category: 'Refreshments', item_group: 'custom-gone' }, saved).id, 'drinks');
+  assert.equal(groupOf({ name: 'Coffee - Royal', category: 'Refreshments', item_group: null }, saved).label, 'Coffee & Espresso');
+  assert.equal(iconFor('NotAnIcon'), ICONS.Package);
+});

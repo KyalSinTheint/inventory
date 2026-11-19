@@ -43,7 +43,8 @@ with real data before going live.
    `20261113000000_nrc_documents_categories.sql` (NRC, documents, photos, branches, category budgets), then
    `20261114000000_optional_voucher_supplier.sql` (voucher, supplier and invoice no. no longer required), then
    `20261115000000_training_end_date.sql` (training start and end dates on deposits), then
-   `20261119000000_item_groups.sql` (main item groups for the shop-style inventory). All are safe to run again.
+   `20261119000000_item_groups.sql` (main item groups for the shop-style inventory), then
+   `20261120000000_custom_item_groups.sql` (create / rename main items and choose their icons). All are safe to run again.
 3. Copy `.env.example` to `.env` and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
    (Project Settings → API).
 4. `npm run build` and deploy `dist/` (a `vercel.json` is included; any static host works).

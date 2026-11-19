@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowDownToLine, ArrowLeft, Camera, LayoutGrid, List, Pencil, ShoppingBasket, Plus, RotateCcw, SlidersHorizontal, ClipboardCheck, Trash2 } from 'lucide-react';
 import { stockMovement, type MovementRow } from './reportSpecs';
-import { groupOf, groupsFor } from '../lib/itemGroups';
+import { groupOf, groupsFor, iconFor, ICONS, type ItemGroup } from '../lib/itemGroups';
 import type { LucideIcon } from 'lucide-react';
 import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { FileLink, FilePicker, Thumb, useFileUrl } from '../components/files';
@@ -20,12 +20,13 @@ export default function InventoryPage() {
   const [tab, setTab] = useState<Tab>('items');
   const [month, setMonth] = useMonthParam();
   const { data } = useData();
-  const [modal, setModal] = useState<null | 'in' | 'return' | 'adjust' | { item?: Item }>(() => (params.get('stockin') === '1' && can('stock.create') ? 'in' : null));
+  const [modal, setModal] = useState<null | 'return' | 'adjust' | { stockIn: string } | { item?: Item; group?: string }>(
+    () => (params.get('stockin') === '1' && can('stock.create') ? { stockIn: '' } : null));
   return (
     <>
       <PageHeader title="Inventory" subtitle="Refreshments, training materials, YCP merchandise and office supplies"
         actions={can('stock.create') && <>
-          <Button onClick={() => setModal('in')}><ArrowDownToLine className="h-4 w-4" />Stock in</Button>
+          <Button onClick={() => setModal({ stockIn: '' })}><ArrowDownToLine className="h-4 w-4" />Stock in</Button>
           <Button variant="secondary" onClick={() => setModal('return')}><RotateCcw className="h-4 w-4" />Return</Button>
           <Button variant="secondary" onClick={() => setModal('adjust')}><SlidersHorizontal className="h-4 w-4" />Adjust / write-off</Button>
         </>} />
@@ -33,13 +34,13 @@ export default function InventoryPage() {
         dates={[...data.stock_txns.map((t) => t.decided_at ?? t.created_at), ...data.physical_counts.map((c) => `${c.month}-01`)]}
         note={month ? `Balances as at ${date(monthEnd(month))}; movements in ${monthLabel(month)}` : 'Current balances and all transactions'} />
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'items', label: 'Stock on hand' }, { id: 'txns', label: 'Transactions' }, { id: 'count', label: 'Physical count' }]} />
-      {tab === 'items' && <ItemsTab month={month} lowOnly={params.get('low') === '1'} initialCat={params.get('cat') ?? ''} onEdit={(item) => setModal({ item })} />}
+      {tab === 'items' && <ItemsTab month={month} lowOnly={params.get('low') === '1'} initialCat={params.get('cat') ?? ''} onEdit={(item, group) => setModal({ item, group })} onStockIn={(id) => setModal({ stockIn: id })} />}
       {tab === 'txns' && <TxnsTab month={month} />}
       {tab === 'count' && <CountTab month={month} />}
-      {modal === 'in' && <StockInModal onClose={() => setModal(null)} />}
+      {modal && typeof modal === 'object' && 'stockIn' in modal && <StockInModal initialItem={modal.stockIn} onClose={() => setModal(null)} />}
       {modal === 'return' && <ReturnModal onClose={() => setModal(null)} />}
       {modal === 'adjust' && <AdjustModal onClose={() => setModal(null)} />}
-      {modal && typeof modal === 'object' && <ItemModal item={modal.item} onClose={() => setModal(null)} />}
+      {modal && typeof modal === 'object' && !('stockIn' in modal) && <ItemModal item={modal.item} initialGroup={modal.group} onClose={() => setModal(null)} />}
     </>
   );
 }
@@ -47,7 +48,7 @@ export default function InventoryPage() {
 const txnMonth = (t: { decided_at: string | null; created_at: string }) => (t.decided_at ?? t.created_at).slice(0, 7);
 
 function ItemsTable({ rows, month, moves, onEdit }: { rows: Item[]; month: string; moves: Map<string, MovementRow> | null; onEdit: (i?: Item) => void }) {
-  const { can } = useData();
+  const { can, data } = useData();
   const qtyOf = (i: Item) => moves?.get(i.id)?.closing ?? i.qty_on_hand;
   return (
     <>
@@ -65,7 +66,7 @@ function ItemsTable({ rows, month, moves, onEdit }: { rows: Item[]; month: strin
                 <tr key={i.id} className={isLow ? 'bg-red-50/60' : ''}>
                   <td className="py-1.5"><Thumb att={i.photo} alt={i.name} /></td>
                   <td className="font-medium text-navy-900">{i.name}{!i.active && <Badge>inactive</Badge>}</td>
-                  <td className="whitespace-nowrap text-xs text-slate-500">{groupOf(i).label}</td>
+                  <td className="whitespace-nowrap text-xs text-slate-500">{groupOf(i, data.item_groups).label}</td>
                   <td className="whitespace-nowrap">{i.category}</td>
                   {m && <>
                     <td className="num text-slate-500">{num(m.opening)}</td>
@@ -94,13 +95,17 @@ function ItemsTable({ rows, month, moves, onEdit }: { rows: Item[]; month: strin
  *  2. tap one to enter it and see just its item cards (with real photos).
  * The chosen main item is kept in the URL (?group=coffee) so browser Back returns to step 1.
  */
-function ItemsTab({ month, lowOnly, initialCat, onEdit }: { month: string; lowOnly: boolean; initialCat: string; onEdit: (i?: Item) => void }) {
+function ItemsTab({ month, lowOnly, initialCat, onEdit, onStockIn }: {
+  month: string; lowOnly: boolean; initialCat: string; onEdit: (i?: Item, group?: string) => void; onStockIn: (itemId: string) => void;
+}) {
   const { data, can } = useData();
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<Category | ''>((CATEGORIES as readonly string[]).includes(initialCat) ? (initialCat as Category) : '');
   const [low, setLow] = useState(lowOnly);
   const [view, setView] = useState<'cards' | 'table'>('cards');
+  const [groupModal, setGroupModal] = useState<null | { group?: ItemGroup }>(null);
+  const [detail, setDetail] = useState<Item | null>(null);
   const group = params.get('group') ?? '';
   const setGroup = (g: string) => {
     const p = new URLSearchParams(params);
@@ -112,16 +117,17 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit }: { month: string; lowOn
   const qtyOf = (i: Item) => moves?.get(i.id)?.closing ?? i.qty_on_hand;
   const visible = data.items.filter((i) => can('item.manage') || i.active);
   const inCat = visible.filter((i) => !cat || i.category === cat);
-  const groups = groupsFor(cat).map((g) => {
-    const list = inCat.filter((i) => groupOf(i).id === g.id);
+  const groups = groupsFor(cat, data.item_groups).map((g) => {
+    const list = inCat.filter((i) => groupOf(i, data.item_groups).id === g.id);
     return { g, count: list.length, low: list.filter((i) => qtyOf(i) <= i.min_level).length };
-  }).filter((x) => x.count > 0 && (!low || x.low > 0));
-  const chosen = group === 'all' ? null : groupsFor('').find((g) => g.id === group) ?? null;
+  }).filter((x) => (x.count > 0 || x.g.custom) && (!low || x.low > 0));
+  const chosen = group === 'all' ? null : groupsFor('', data.item_groups).find((g) => g.id === group) ?? null;
+  const manage = can('item.manage');
   const s = q.trim().toLowerCase();
   const searching = s.length > 0;
   // Items shown: inside a main item, or every match while searching, or everything in table view.
   const rows = useMemo(() => visible
-    .filter((i) => (searching ? i.name.toLowerCase().includes(s) : group === 'all' || view === 'table' && !group ? !cat || i.category === cat : groupOf(i).id === group))
+    .filter((i) => (searching ? i.name.toLowerCase().includes(s) : group === 'all' || view === 'table' && !group ? !cat || i.category === cat : groupOf(i, data.item_groups).id === group))
     .filter((i) => !low || qtyOf(i) <= i.min_level)
     .sort((a, b) => a.name.localeCompare(b.name)),
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,7 +154,7 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit }: { month: string; lowOn
           <button onClick={() => setView('cards')} className={cx('flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold', view === 'cards' ? 'bg-kbz-navy text-white' : 'text-slate-600')}><LayoutGrid className="h-3.5 w-3.5" />Cards</button>
           <button onClick={() => setView('table')} className={cx('flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold', view === 'table' ? 'bg-kbz-navy text-white' : 'text-slate-600')}><List className="h-3.5 w-3.5" />Table</button>
         </div>
-        {can('item.manage') && <Button variant="secondary" onClick={() => onEdit()}><Plus className="h-4 w-4" />New item</Button>}
+        {manage && <Button variant="secondary" onClick={() => onEdit(undefined, group || undefined)}><Plus className="h-4 w-4" />New item</Button>}
       </div>
 
       {showGroups ? (
@@ -158,9 +164,17 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit }: { month: string; lowOn
           {groups.length === 0 ? <Empty>No items match.</Empty> : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6" role="list" aria-label="Main items">
               {groups.map(({ g, count, low: lowN }) => (
-                <GroupCard key={g.id} label={g.label} count={count} low={lowN} onClick={() => setGroup(g.id)} Icon={g.icon} />
+                <GroupCard key={g.id} label={g.label} count={count} low={lowN} onClick={() => setGroup(g.id)} Icon={g.icon}
+                  onEdit={manage ? () => setGroupModal({ group: g }) : undefined} />
               ))}
               <GroupCard label="All items" count={inCat.length} onClick={() => setGroup('all')} Icon={LayoutGrid} muted />
+              {manage && (
+                <button onClick={() => setGroupModal({})}
+                  className="flex flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-slate-300 px-3 py-6 text-center text-slate-500 transition hover:border-kbz-navy hover:text-kbz-navy">
+                  <span className="grid h-20 w-20 place-items-center rounded-full bg-white ring-1 ring-slate-200"><Plus className="h-9 w-9" strokeWidth={1.4} /></span>
+                  <span className="text-sm font-semibold">New main item</span>
+                </button>
+              )}
             </div>
           )}
         </>
@@ -176,6 +190,11 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit }: { month: string; lowOn
             {chosen && !searching && (
               <span className="grid h-11 w-11 place-items-center rounded-full bg-kbz-navy text-white"><chosen.icon className="h-6 w-6" strokeWidth={1.5} /></span>
             )}
+            {chosen && !searching && manage && (
+              <button onClick={() => setGroupModal({ group: chosen })} className="order-last inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200 hover:text-kbz-navy sm:order-none" aria-label={`Edit main item ${chosen.label}`}>
+                <Pencil className="h-3.5 w-3.5" />Edit main item
+              </button>
+            )}
             <h3 className="text-lg font-bold text-kbz-dark">
               {searching ? `Results for “${q.trim()}”` : chosen ? chosen.label : group === 'all' ? 'All items' : cat || 'All items'}
               <span className="ml-1 text-sm font-normal text-slate-500">· {rows.length} item{rows.length === 1 ? '' : 's'}</span>
@@ -184,17 +203,25 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit }: { month: string; lowOn
           </div>
           {view === 'table' ? <ItemsTable rows={rows} month={month} moves={moves} onEdit={onEdit} /> : rows.length === 0 ? <Empty>No items match.</Empty> : (
             <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {rows.map((i) => <ProductCard key={i.id} item={i} qty={qtyOf(i)} showGroup={searching || group === 'all'} onEdit={can('item.manage') ? () => onEdit(i) : undefined} />)}
+              {rows.map((i) => <ProductCard key={i.id} item={i} qty={qtyOf(i)} showGroup={searching || group === 'all'} onOpen={() => setDetail(i)} onEdit={manage ? () => onEdit(i) : undefined} />)}
             </div>
+          )}
+          {chosen && !searching && rows.length === 0 && manage && (
+            <div className="mt-3 text-center"><Button onClick={() => onEdit(undefined, chosen.id)}><Plus className="h-4 w-4" />Add the first item to {chosen.label}</Button></div>
           )}
         </>
       )}
+      {groupModal && <GroupModal group={groupModal.group} defaultCategory={cat || 'Refreshments'} onClose={() => setGroupModal(null)}
+        onDeleted={() => { setGroupModal(null); if (group) setGroup(''); }} />}
+      {detail && <ItemDetailModal item={data.items.find((x) => x.id === detail.id) ?? detail} qty={qtyOf(data.items.find((x) => x.id === detail.id) ?? detail)}
+        onClose={() => setDetail(null)} onEdit={manage ? () => { setDetail(null); onEdit(detail); } : undefined}
+        onStockIn={can('stock.create') ? () => { setDetail(null); onStockIn(detail.id); } : undefined} />}
     </>
   );
 }
 
-function GroupCard({ label, count, low, onClick, Icon, muted }: { label: string; count: number; low?: number; onClick: () => void; Icon: LucideIcon; muted?: boolean }) {
-  return (
+function GroupCard({ label, count, low, onClick, Icon, muted, onEdit }: { label: string; count: number; low?: number; onClick: () => void; Icon: LucideIcon; muted?: boolean; onEdit?: () => void }) {
+  const card = (
     <button onClick={onClick} role="listitem" aria-label={`${label}, ${count} item${count === 1 ? '' : 's'}${low ? `, ${low} low stock` : ''}`}
       className={cx('group relative flex flex-col items-center gap-3 rounded-3xl px-3 py-6 text-center shadow-[0_8px_24px_-14px_rgba(15,23,42,0.3)] transition hover:-translate-y-0.5 hover:bg-kbz-navy hover:text-white hover:shadow-[0_14px_30px_-14px_rgba(0,45,114,0.8)]',
         muted ? 'bg-slate-100 text-slate-600' : 'bg-white text-kbz-dark')}>
@@ -206,13 +233,177 @@ function GroupCard({ label, count, low, onClick, Icon, muted }: { label: string;
       <span className="-mt-2 text-[11px] text-slate-400 transition group-hover:text-white/70">{count} item{count === 1 ? '' : 's'}</span>
     </button>
   );
+  if (!onEdit) return card;
+  return (
+    <div className="group/card relative">
+      {card}
+      <button onClick={onEdit} aria-label={`Edit main item ${label}`} title="Rename / change icon"
+        className="absolute left-3 top-3 grid h-7 w-7 place-items-center rounded-full bg-white text-slate-400 opacity-0 shadow ring-1 ring-slate-200 transition hover:text-kbz-navy focus:opacity-100 group-hover/card:opacity-100">
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
 }
 
-function ProductCard({ item: i, qty, onEdit, showGroup }: { item: Item; qty: number; onEdit?: () => void; showGroup?: boolean }) {
-  const { can, actions } = useData();
+/** Create a main item, or rename / re-icon an existing one. */
+function GroupModal({ group, defaultCategory, onClose, onDeleted }: { group?: ItemGroup; defaultCategory: Category; onClose: () => void; onDeleted: () => void }) {
+  const { data, actions } = useData();
+  const toast = useToast();
+  const [label, setLabel] = useState(group?.label ?? '');
+  const [category, setCategory] = useState<Category>(group?.category ?? defaultCategory);
+  const [icon, setIcon] = useState(group?.iconName ?? 'Package');
+  const [q, setQ] = useState('');
+  const { busy, error, run } = useSubmit();
+  const used = group ? data.items.filter((i) => groupOf(i, data.item_groups).id === group.id).length : 0;
+  const Preview = iconFor(icon);
+  const names = Object.keys(ICONS).filter((n) => !q.trim() || n.toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <Modal wide open onClose={onClose} title={group ? `Edit main item: ${group.label}` : 'New main item'} footer={<>
+      {group?.custom && (
+        <Button variant="ghost" className="mr-auto text-kbz-red" disabled={busy}
+          onClick={() => run(async () => { await actions.deleteItemGroup(group.id); toast(`${group.label} deleted`); onDeleted(); })}>
+          <Trash2 className="h-4 w-4" />Delete
+        </Button>
+      )}
+      <Button variant="secondary" onClick={onClose}>Cancel</Button>
+      <Button busy={busy} onClick={() => run(async () => { await actions.saveItemGroup({ id: group?.id, label, category, icon }); toast(group ? 'Main item updated' : `${label.trim()} created`); onClose(); })}>
+        {group ? 'Save' : 'Create main item'}
+      </Button>
+    </>}>
+      <div className="grid gap-5 sm:grid-cols-[11rem_1fr]">
+        <div className="flex flex-col items-center gap-3 rounded-3xl bg-kbz-navy px-3 py-6 text-center text-white">
+          <span className="grid h-20 w-20 place-items-center rounded-full bg-white text-kbz-navy"><Preview className="h-9 w-9" strokeWidth={1.4} /></span>
+          <span className="text-sm font-semibold">{label.trim() || 'Main item name'}</span>
+          <span className="-mt-2 text-[11px] text-white/70">{group ? `${used} item${used === 1 ? '' : 's'}` : 'Preview'}</span>
+        </div>
+        <div className="space-y-3">
+          <Field label="Name" required><input className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Juice, Notebooks, Prizes" autoFocus /></Field>
+          <Field label="Category" hint={group ? 'The category of an existing main item cannot change.' : undefined}>
+            <select className="input" value={category} disabled={!!group} onChange={(e) => setCategory(e.target.value as Category)}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
+          </Field>
+        </div>
+      </div>
+      <div className="mt-5">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <span className="text-xs font-semibold text-slate-600">Icon <span className="text-red-600">*</span></span>
+          <input className="input w-44 py-1.5 text-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find icon (e.g. cup)" aria-label="Find icon" />
+        </div>
+        <div className="grid max-h-60 grid-cols-6 gap-2 overflow-y-auto rounded-2xl bg-slate-50 p-2 sm:grid-cols-10" role="radiogroup" aria-label="Icon">
+          {names.map((n) => {
+            const I = ICONS[n];
+            return (
+              <button key={n} type="button" role="radio" aria-checked={icon === n} aria-label={n} title={n} onClick={() => setIcon(n)}
+                className={cx('grid aspect-square place-items-center rounded-xl transition', icon === n ? 'bg-kbz-navy text-white shadow' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:text-kbz-navy hover:ring-kbz-navy')}>
+                <I className="h-5 w-5" strokeWidth={1.5} />
+              </button>
+            );
+          })}
+          {names.length === 0 && <p className="col-span-full py-4 text-center text-xs text-slate-400">No icon matches “{q}”.</p>}
+        </div>
+      </div>
+      <ErrorNote error={error} />
+    </Modal>
+  );
+}
+
+/** Everything about one item: price per unit, purchases (with invoices), issues to trainings and stock. */
+function ItemDetailModal({ item: i, qty, onClose, onEdit, onStockIn }: { item: Item; qty: number; onClose: () => void; onEdit?: () => void; onStockIn?: () => void }) {
+  const { data, can, name } = useData();
+  const nav = useNavigate();
+  const { url } = useFileUrl(i.photo);
+  const g = groupOf(i, data.item_groups);
+  const when = (t: { decided_at: string | null; created_at: string }) => t.decided_at ?? t.created_at;
+  const txns = data.stock_txns.filter((t) => t.item_id === i.id).sort((a, b) => when(b).localeCompare(when(a)));
+  const buys = txns.filter((t) => t.type === 'IN' && t.status !== 'Rejected');
+  const lastBuy = buys.find((t) => t.status === 'Approved' && t.supplier !== 'Opening balance') ?? buys.find((t) => t.status === 'Approved');
+  const issues = txns.filter((t) => t.type === 'OUT' && t.status === 'Approved');
+  const year = String(new Date().getFullYear());
+  const boughtYear = buys.filter((t) => t.status === 'Approved' && t.supplier !== 'Opening balance' && when(t).startsWith(year));
+  const issuedYear = issues.filter((t) => when(t).startsWith(year)).reduce((s, t) => s + t.qty, 0);
+  const topic = (id: string | null) => data.batches.find((b) => b.id === id)?.name ?? '—';
+  const out = qty <= 0;
+  const isLow = !out && qty <= i.min_level;
+  const facts: [string, ReactNode][] = [
+    [`Price per ${i.unit.toLowerCase()}`, <span key="p" className="text-kbz-blue">{mmk(i.unit_cost)}</span>],
+    ['In stock', <span key="s" className={out || isLow ? 'text-kbz-red' : 'text-emerald-700'}>{num(qty)} {i.unit}</span>],
+    ['Minimum level', `${num(i.min_level)} ${i.unit}`],
+    ['Stock value', mmk(qty * i.unit_cost)],
+    ['Last bought', lastBuy ? date(when(lastBuy)) : '—'],
+    [`Bought in ${year}`, boughtYear.length ? `${num(boughtYear.reduce((s, t) => s + t.qty, 0))} ${i.unit} · ${mmk(boughtYear.reduce((s, t) => s + t.qty * t.unit_cost, 0))}` : '—'],
+    [`Issued in ${year}`, `${num(issuedYear)} ${i.unit}`],
+    ['Type', i.classification],
+  ];
+  return (
+    <Modal wide open onClose={onClose} title={i.name} footer={<>
+      {onEdit && <Button variant="secondary" className="mr-auto" onClick={onEdit}><Pencil className="h-4 w-4" />Edit item</Button>}
+      {onStockIn && <Button variant="success" onClick={onStockIn}><ArrowDownToLine className="h-4 w-4" />Stock in</Button>}
+      {can('request.create') && i.active && <Button disabled={out} onClick={() => nav(`/requests?new=1&item=${i.id}`)}><ShoppingBasket className="h-4 w-4" />Request</Button>}
+    </>}>
+      <div className="grid gap-5 sm:grid-cols-[14rem_1fr]">
+        <div className="grid h-56 place-items-center overflow-hidden rounded-2xl bg-white ring-1 ring-slate-100">
+          {url ? <img src={url} alt={i.name} className="h-56 w-full object-contain" />
+            : <span className="grid h-28 w-28 place-items-center rounded-full bg-navy-50 text-kbz-navy"><g.icon className="h-14 w-14" strokeWidth={1.25} /></span>}
+        </div>
+        <div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <span className="inline-flex items-center gap-1 rounded-full bg-navy-50 px-2.5 py-1 font-semibold text-kbz-navy"><g.icon className="h-3.5 w-3.5" />{g.label}</span>
+            <span>{i.category}</span>
+            {(out || isLow) && <span className="rounded-full bg-rose-100 px-2 py-0.5 font-bold uppercase text-kbz-red">{out ? 'Out of stock' : 'Low stock'}</span>}
+            {!i.active && <Badge>Inactive</Badge>}
+          </div>
+          <div className="mt-2 text-2xl font-bold tabular-nums text-kbz-blue">{num(i.unit_cost)} <span className="text-sm font-medium text-slate-400">MMK / {i.unit}</span></div>
+          <dl className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-4">
+            {facts.map(([k, v]) => (
+              <div key={k} className="min-w-0"><dt className="text-[11px] text-slate-500">{k}</dt><dd className="truncate text-sm font-semibold tabular-nums text-kbz-dark">{v}</dd></div>
+            ))}
+          </dl>
+          {lastBuy && (
+            <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Last purchase: <b>{num(lastBuy.qty)} {i.unit}</b> × {num(lastBuy.unit_cost)} = <b>{mmk(lastBuy.qty * lastBuy.unit_cost)}</b> on {date(when(lastBuy))}
+              {lastBuy.supplier && lastBuy.supplier !== 'Opening balance' ? ` from ${lastBuy.supplier}` : lastBuy.supplier === 'Opening balance' ? ' (opening stock)' : ''}
+              {lastBuy.attachment && <> · <FileLink att={lastBuy.attachment} /></>}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <h4 className="mb-2 mt-6 text-sm font-bold text-kbz-dark">Purchase history</h4>
+      {buys.length === 0 ? <p className="text-sm text-slate-400">No purchases recorded yet.</p> : (
+        <div className="table-wrap">
+          <table className="tbl">
+            <thead><tr><th>Date</th><th className="num">Qty</th><th className="num">Price / unit</th><th className="num">Total</th><th>Invoice</th><th>Status</th></tr></thead>
+            <tbody>{buys.slice(0, 8).map((t) => (
+              <tr key={t.id}>
+                <td className="whitespace-nowrap">{date(when(t))}{t.supplier === 'Opening balance' && <div className="text-[11px] text-slate-400">Opening stock</div>}</td>
+                <td className="num">{num(t.qty)}</td><td className="num">{num(t.unit_cost)}</td><td className="num font-semibold">{num(t.qty * t.unit_cost)}</td>
+                <td className="text-xs">{t.attachment ? <FileLink att={t.attachment} /> : <span className="text-slate-400">—</span>}</td>
+                <td><StatusBadge status={t.status} /></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+
+      <h4 className="mb-2 mt-6 text-sm font-bold text-kbz-dark">Issued to trainings</h4>
+      {issues.length === 0 ? <p className="text-sm text-slate-400">Not issued to any training yet.</p> : (
+        <div className="table-wrap">
+          <table className="tbl">
+            <thead><tr><th>Date</th><th>Training</th><th className="num">Qty</th><th>Requested by</th></tr></thead>
+            <tbody>{issues.slice(0, 8).map((t) => (
+              <tr key={t.id}><td className="whitespace-nowrap">{date(when(t))}</td><td>{topic(t.batch_id)}</td><td className="num">{num(t.qty)}</td><td className="text-xs">{name(t.created_by)}</td></tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function ProductCard({ item: i, qty, onEdit, onOpen, showGroup }: { item: Item; qty: number; onEdit?: () => void; onOpen: () => void; showGroup?: boolean }) {
+  const { can, actions, data } = useData();
   const toast = useToast();
   const nav = useNavigate();
-  const g = groupOf(i);
+  const g = groupOf(i, data.item_groups);
   const out = qty <= 0;
   const isLow = !out && qty <= i.min_level;
   const { url } = useFileUrl(i.photo);
@@ -243,7 +434,7 @@ function ProductCard({ item: i, qty, onEdit, showGroup }: { item: Item; qty: num
       )}
       <div className="relative h-40 overflow-hidden rounded-xl bg-white">
         {url ? (
-          <img src={url} alt={i.name} className="h-40 w-full object-contain" loading="lazy" />
+          <button onClick={onOpen} className="block h-40 w-full" aria-label={`Details of ${i.name}`}><img src={url} alt={i.name} className="h-40 w-full object-contain" loading="lazy" /></button>
         ) : canPhoto ? (
           <label className={cx('flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 transition hover:border-kbz-navy hover:text-kbz-navy', uploading && 'animate-pulse')}>
             <Camera className="h-7 w-7" strokeWidth={1.5} />
@@ -251,7 +442,7 @@ function ProductCard({ item: i, qty, onEdit, showGroup }: { item: Item; qty: num
             {photoInput}
           </label>
         ) : (
-          <span className="flex h-40 items-center justify-center"><span className="grid h-24 w-24 place-items-center rounded-full bg-navy-50 text-kbz-navy"><g.icon className="h-12 w-12" strokeWidth={1.25} /></span></span>
+          <button onClick={onOpen} className="flex h-40 w-full items-center justify-center" aria-label={`Details of ${i.name}`}><span className="grid h-24 w-24 place-items-center rounded-full bg-navy-50 text-kbz-navy"><g.icon className="h-12 w-12" strokeWidth={1.25} /></span></button>
         )}
         {url && canPhoto && (
           <label className="absolute bottom-1 right-1 grid h-7 w-7 cursor-pointer place-items-center rounded-full bg-white/90 text-slate-500 opacity-0 shadow ring-1 ring-slate-200 transition hover:text-kbz-navy group-hover:opacity-100 focus-within:opacity-100" title="Change photo" aria-label={`Change photo of ${i.name}`}>
@@ -260,7 +451,7 @@ function ProductCard({ item: i, qty, onEdit, showGroup }: { item: Item; qty: num
         )}
       </div>
       <div className="mt-3 text-[11px] text-slate-400">{showGroup ? `${g.label} · ` : ''}{i.unit}</div>
-      <div className="mt-0.5 line-clamp-2 min-h-[2.5rem] text-sm font-semibold leading-snug text-kbz-dark">{i.name}</div>
+      <button onClick={onOpen} className="mt-0.5 line-clamp-2 min-h-[2.5rem] text-left text-sm font-semibold leading-snug text-kbz-dark hover:text-kbz-blue hover:underline">{i.name}</button>
       <div className="mt-2 flex items-end justify-between gap-2">
         <div className="min-w-0">
           <div className="text-sm font-bold tabular-nums text-kbz-blue">{num(i.unit_cost)} <span className="text-[11px] font-medium text-slate-400">MMK / {i.unit}</span></div>
@@ -339,10 +530,13 @@ function ItemPicker({ value, onChange, filter }: { value: string; onChange: (v: 
   );
 }
 
-function StockInModal({ onClose }: { onClose: () => void }) {
+function StockInModal({ onClose, initialItem = '' }: { onClose: () => void; initialItem?: string }) {
   const { data, actions } = useData();
   const toast = useToast();
-  const [f, setF] = useState({ item_id: '', qty: '', unit_cost: '', total: '', reason: '' });
+  const [f, setF] = useState(() => {
+    const it0 = data.items.find((i) => i.id === initialItem);
+    return { item_id: it0?.id ?? '', qty: '', unit_cost: it0 ? String(it0.unit_cost) : '', total: '', reason: '' };
+  });
   const [invoice, setInvoice] = useState<File[]>([]);
   const { busy, error, run } = useSubmit();
   const it = data.items.find((i) => i.id === f.item_id);
@@ -427,13 +621,13 @@ function AdjustModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function ItemModal({ item, onClose }: { item?: Item; onClose: () => void }) {
-  const { actions } = useData();
+function ItemModal({ item, onClose, initialGroup }: { item?: Item; onClose: () => void; initialGroup?: string }) {
+  const { actions, data } = useData();
   const toast = useToast();
   const [f, setF] = useState({
-    name: item?.name ?? '', category: item?.category ?? ('Refreshments' as Category), classification: item?.classification ?? 'Consumable',
+    name: item?.name ?? '', category: item?.category ?? groupsFor('', data.item_groups).find((g) => g.id === initialGroup)?.category ?? ('Refreshments' as Category), classification: item?.classification ?? 'Consumable',
     unit: item?.unit ?? 'Piece', unit_cost: String(item?.unit_cost ?? ''), min_level: String(item?.min_level ?? ''), active: item?.active ?? true,
-    item_group: item ? groupOf(item).id : '',
+    item_group: item ? groupOf(item, data.item_groups).id : initialGroup && initialGroup !== 'all' ? initialGroup : '',
   });
   const { busy, error, run } = useSubmit();
   // undefined = keep current photo, null = remove, File = replace
@@ -460,7 +654,7 @@ function ItemModal({ item, onClose }: { item?: Item; onClose: () => void }) {
         <Field label="Name" required className="sm:col-span-2"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         <Field label="Category"><select className="input" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value as Category, item_group: '' })}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></Field>
         <Field label="Main item" hint="The icon card it appears under"><select className="input" value={f.item_group} onChange={(e) => setF({ ...f, item_group: e.target.value })}>
-          <option value="">Choose automatically from the name</option>{groupsFor(f.category).map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+          <option value="">Choose automatically from the name</option>{groupsFor(f.category, data.item_groups).map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
         </select></Field>
         <Field label="Classification"><select className="input" value={f.classification} onChange={(e) => setF({ ...f, classification: e.target.value as Item['classification'] })}>{CLASSIFICATIONS.map((c) => <option key={c}>{c}</option>)}</select></Field>
         <Field label="Cost per unit (MMK)"><input className="input" type="number" min="0" value={f.unit_cost} onChange={(e) => setF({ ...f, unit_cost: e.target.value })} /></Field>
