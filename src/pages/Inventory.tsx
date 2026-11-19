@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowDownToLine, ArrowLeft, Camera, LayoutGrid, List, Pencil, ShoppingBasket, Plus, RotateCcw, SlidersHorizontal, ClipboardCheck, Trash2 } from 'lucide-react';
+import { ArrowDownToLine, ArrowLeft, Camera, Info, LayoutGrid, List, Pencil, ShoppingBasket, Plus, RotateCcw, SlidersHorizontal, ClipboardCheck, Trash2 } from 'lucide-react';
 import { stockMovement, type MovementRow } from './reportSpecs';
 import { groupOf, groupsFor, iconFor, ICONS, type ItemGroup } from '../lib/itemGroups';
 import type { LucideIcon } from 'lucide-react';
@@ -402,7 +402,6 @@ function ItemDetailModal({ item: i, qty, onClose, onEdit, onStockIn }: { item: I
 function ProductCard({ item: i, qty, onEdit, onOpen, showGroup }: { item: Item; qty: number; onEdit?: () => void; onOpen: () => void; showGroup?: boolean }) {
   const { can, actions, data } = useData();
   const toast = useToast();
-  const nav = useNavigate();
   const g = groupOf(i, data.item_groups);
   const out = qty <= 0;
   const isLow = !out && qty <= i.min_level;
@@ -434,7 +433,7 @@ function ProductCard({ item: i, qty, onEdit, onOpen, showGroup }: { item: Item; 
       )}
       <div className="relative h-40 overflow-hidden rounded-xl bg-white">
         {url ? (
-          <button onClick={onOpen} className="block h-40 w-full" aria-label={`Details of ${i.name}`}><img src={url} alt={i.name} className="h-40 w-full object-contain" loading="lazy" /></button>
+          <button onClick={onOpen} className="block h-40 w-full" aria-label={`Photo of ${i.name}`}><img src={url} alt={i.name} className="h-40 w-full object-contain" loading="lazy" /></button>
         ) : canPhoto ? (
           <label className={cx('flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 transition hover:border-kbz-navy hover:text-kbz-navy', uploading && 'animate-pulse')}>
             <Camera className="h-7 w-7" strokeWidth={1.5} />
@@ -442,7 +441,7 @@ function ProductCard({ item: i, qty, onEdit, onOpen, showGroup }: { item: Item; 
             {photoInput}
           </label>
         ) : (
-          <button onClick={onOpen} className="flex h-40 w-full items-center justify-center" aria-label={`Details of ${i.name}`}><span className="grid h-24 w-24 place-items-center rounded-full bg-navy-50 text-kbz-navy"><g.icon className="h-12 w-12" strokeWidth={1.25} /></span></button>
+          <button onClick={onOpen} className="flex h-40 w-full items-center justify-center" aria-label={`Photo of ${i.name}`}><span className="grid h-24 w-24 place-items-center rounded-full bg-navy-50 text-kbz-navy"><g.icon className="h-12 w-12" strokeWidth={1.25} /></span></button>
         )}
         {url && canPhoto && (
           <label className="absolute bottom-1 right-1 grid h-7 w-7 cursor-pointer place-items-center rounded-full bg-white/90 text-slate-500 opacity-0 shadow ring-1 ring-slate-200 transition hover:text-kbz-navy group-hover:opacity-100 focus-within:opacity-100" title="Change photo" aria-label={`Change photo of ${i.name}`}>
@@ -457,12 +456,10 @@ function ProductCard({ item: i, qty, onEdit, onOpen, showGroup }: { item: Item; 
           <div className="text-sm font-bold tabular-nums text-kbz-blue">{num(i.unit_cost)} <span className="text-[11px] font-medium text-slate-400">MMK / {i.unit}</span></div>
           <div className={cx('text-[11px] font-semibold tabular-nums', out || isLow ? 'text-kbz-red' : 'text-emerald-700')}>{num(qty)} in stock{isLow ? ` · min ${num(i.min_level)}` : ''}</div>
         </div>
-        {can('request.create') && i.active && (
-          <button onClick={() => nav(`/requests?new=1&item=${i.id}`)} disabled={out} title={out ? 'Out of stock' : 'Request this item'}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-kbz-dark transition hover:bg-kbz-navy hover:text-white disabled:opacity-40" aria-label={`Request ${i.name}`}>
-            <ShoppingBasket className="h-4 w-4" />
-          </button>
-        )}
+        <button onClick={onOpen} aria-label={`Details of ${i.name}`}
+          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-kbz-dark transition hover:bg-kbz-navy hover:text-white">
+          <Info className="h-3.5 w-3.5" />Details
+        </button>
       </div>
     </div>
   );
