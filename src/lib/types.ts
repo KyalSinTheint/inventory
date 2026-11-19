@@ -35,6 +35,8 @@ export interface Item {
   active: boolean;
   /** Item photo (compressed JPEG). */
   photo: Attachment | null;
+  /** Main item group shown as an icon card (e.g. 'coffee', 'tea'); null = worked out from the name. */
+  item_group: string | null;
   created_at: string;
 }
 

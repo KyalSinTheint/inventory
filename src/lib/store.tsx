@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createAdapter, type DataAdapter } from './db';
 import { compressImage } from './files';
+import { guessGroup } from './itemGroups';
 import {
   applyDelta, budgetCategory, can, checkAvailability, depositTransition, isValidNrc, nextRef, validateTrainingDates, normalizeNrc, RuleError, stockDelta, validateLines, validateNewDeposit,
   type DepositAction, type Permission,
@@ -112,7 +113,7 @@ function makeActions(
       const existingItem = input.id ? get().data.items.find((i) => i.id === input.id) : undefined;
       const prefix = ({ Refreshments: 'RF', 'Training Materials': 'TM', 'YCP Program': 'YCP', 'Office Supplies': 'OS' } as Record<string, string>)[input.category] ?? 'IT';
       const nextNo = 1 + get().data.items.filter((i) => i.code.startsWith(`${prefix}-`)).reduce((m, i) => Math.max(m, parseInt(i.code.slice(prefix.length + 1), 10) || 0), 0);
-      input = { ...input, code: input.code?.trim() || existingItem?.code || `${prefix}-${String(nextNo).padStart(3, '0')}` };
+      input = { ...input, code: input.code?.trim() || existingItem?.code || `${prefix}-${String(nextNo).padStart(3, '0')}`, item_group: input.item_group || guessGroup(input.name, input.category) };
       if (get().data.items.some((i) => i.name.trim().toLowerCase() === input.name.trim().toLowerCase() && i.category === input.category && i.id !== input.id)) {
         throw new RuleError(`"${input.name.trim()}" already exists in ${input.category}.`);
       }

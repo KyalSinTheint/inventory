@@ -1,14 +1,16 @@
-import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { ArrowDownToLine, Camera, Pencil, Plus, RotateCcw, SlidersHorizontal, ClipboardCheck, Trash2 } from 'lucide-react';
-import { stockMovement } from './reportSpecs';
+import { useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowDownToLine, Camera, ChevronLeft, ChevronRight, LayoutGrid, List, Pencil, ShoppingBasket, Plus, RotateCcw, SlidersHorizontal, ClipboardCheck, Trash2 } from 'lucide-react';
+import { stockMovement, type MovementRow } from './reportSpecs';
+import { groupOf, groupsFor } from '../lib/itemGroups';
+import type { LucideIcon } from 'lucide-react';
 import { MonthBar, useMonthParam } from '../components/MonthBar';
-import { FileLink, FilePicker, Thumb } from '../components/files';
+import { FileLink, FilePicker, Thumb, useFileUrl } from '../components/files';
 import { DOC_ACCEPT } from '../lib/files';
 import { useData } from '../lib/store';
 import { CATEGORIES, CLASSIFICATIONS, TXN_LABELS, type Category, type CountLine, type Item, type ReturnCondition } from '../lib/types';
 import { date, dateTime, mmk, monthEnd, monthLabel, num, thisMonth } from '../lib/format';
-import { Badge, Button, Empty, ErrorNote, Field, Modal, PageHeader, SearchBox, StatusBadge, Tabs, useSubmit, useToast } from '../components/ui';
+import { Badge, Button, cx, Empty, ErrorNote, Field, Modal, PageHeader, SearchBox, StatusBadge, Tabs, useSubmit, useToast } from '../components/ui';
 
 type Tab = 'items' | 'txns' | 'count';
 
@@ -44,33 +46,14 @@ export default function InventoryPage() {
 
 const txnMonth = (t: { decided_at: string | null; created_at: string }) => (t.decided_at ?? t.created_at).slice(0, 7);
 
-function ItemsTab({ month, lowOnly, initialCat, onEdit }: { month: string; lowOnly: boolean; initialCat: string; onEdit: (i?: Item) => void }) {
-  const { data, can } = useData();
-  const [q, setQ] = useState('');
-  const [cat, setCat] = useState<string>(initialCat);
-  const [low, setLow] = useState(lowOnly);
-  // For a chosen month: balance at month end plus that month's movements, rebuilt from approved transactions.
-  const moves = useMemo(() => (month ? new Map(stockMovement(data, `${month}-01`, monthEnd(month)).map((r) => [r.item.id, r])) : null), [data, month]);
+function ItemsTable({ rows, month, moves, onEdit }: { rows: Item[]; month: string; moves: Map<string, MovementRow> | null; onEdit: (i?: Item) => void }) {
+  const { can } = useData();
   const qtyOf = (i: Item) => moves?.get(i.id)?.closing ?? i.qty_on_hand;
-  const rows = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    return data.items.filter((i) => (!cat || i.category === cat) && (!low || qtyOf(i) <= i.min_level) && (!s || i.name.toLowerCase().includes(s)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.items, q, cat, low, moves]);
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <SearchBox value={q} onChange={setQ} placeholder="Search item" />
-        <select className="input w-auto" value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Category">
-          <option value="">All categories</option>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-        </select>
-        <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={low} onChange={(e) => setLow(e.target.checked)} />Low stock only</label>
-        <div className="flex-1" />
-        {can('item.manage') && <Button variant="secondary" onClick={() => onEdit()}><Plus className="h-4 w-4" />New item</Button>}
-      </div>
       <div className="table-wrap">
         <table className="tbl">
-          <thead><tr><th className="w-12" /><th>Item</th><th>Category</th><th>Type</th>
+          <thead><tr><th className="w-12" /><th>Item</th><th>Main item</th><th>Category</th>
             {moves && <><th className="num">Opening</th><th className="num">In</th><th className="num">Out</th></>}
             <th className="num">{moves ? `On hand ${monthLabel(month)}` : 'On hand'}</th><th className="num">Min</th><th className="num">Cost / unit</th><th className="num">Value (qty × cost)</th>{can('item.manage') && <th />}</tr></thead>
           <tbody>
@@ -80,10 +63,10 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit }: { month: string; lowOn
               const m = moves?.get(i.id);
               return (
                 <tr key={i.id} className={isLow ? 'bg-red-50/60' : ''}>
-                  <td className="py-1.5">{can('item.manage') ? <button onClick={() => onEdit(i)} aria-label={`Photo of ${i.name}`}><Thumb att={i.photo} alt={i.name} /></button> : <Thumb att={i.photo} alt={i.name} />}</td>
+                  <td className="py-1.5"><Thumb att={i.photo} alt={i.name} /></td>
                   <td className="font-medium text-navy-900">{i.name}{!i.active && <Badge>inactive</Badge>}</td>
+                  <td className="whitespace-nowrap text-xs text-slate-500">{groupOf(i).label}</td>
                   <td className="whitespace-nowrap">{i.category}</td>
-                  <td className="whitespace-nowrap text-xs text-slate-500">{i.classification}</td>
                   {m && <>
                     <td className="num text-slate-500">{num(m.opening)}</td>
                     <td className="num text-emerald-700">{m.inQty + Math.max(0, m.adjusted) + m.returned ? `+${num(m.inQty + Math.max(0, m.adjusted) + m.returned)}` : '—'}</td>
@@ -101,8 +84,137 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit }: { month: string; lowOn
         </table>
         {rows.length === 0 && <Empty>No items match.</Empty>}
       </div>
-      <p className="mt-2 text-xs text-slate-500">Rows in red are at or below the minimum level. Total value{month ? ` at end of ${monthLabel(month)}` : ''}: {mmk(rows.reduce((s, i) => s + qtyOf(i) * i.unit_cost, 0))}</p>
     </>
+  );
+}
+
+/** Shop-style view: pick a main item (icon cards), then browse item cards. A table view is kept for monthly movements. */
+function ItemsTab({ month, lowOnly, initialCat, onEdit }: { month: string; lowOnly: boolean; initialCat: string; onEdit: (i?: Item) => void }) {
+  const { data, can } = useData();
+  const [q, setQ] = useState('');
+  const [cat, setCat] = useState<Category | ''>((CATEGORIES as readonly string[]).includes(initialCat) ? (initialCat as Category) : '');
+  const [group, setGroup] = useState('');
+  const [low, setLow] = useState(lowOnly);
+  const [view, setView] = useState<'cards' | 'table'>('cards');
+  const railRef = useRef<HTMLDivElement>(null);
+  const moves = useMemo(() => (month ? new Map(stockMovement(data, `${month}-01`, monthEnd(month)).map((r) => [r.item.id, r])) : null), [data, month]);
+  const qtyOf = (i: Item) => moves?.get(i.id)?.closing ?? i.qty_on_hand;
+  const inCat = data.items.filter((i) => (!cat || i.category === cat) && (can('item.manage') || i.active));
+  const groups = groupsFor(cat).map((g) => {
+    const list = inCat.filter((i) => groupOf(i).id === g.id);
+    return { g, count: list.length, low: list.filter((i) => qtyOf(i) <= i.min_level).length };
+  }).filter((x) => x.count > 0);
+  const rows = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return inCat.filter((i) => (!group || groupOf(i).id === group) && (!low || qtyOf(i) <= i.min_level) && (!s || i.name.toLowerCase().includes(s)))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.items, q, cat, group, low, moves]);
+  const chosen = groups.find((x) => x.g.id === group)?.g;
+
+  return (
+    <>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <SearchBox value={q} onChange={setQ} placeholder="Search item" />
+        <div className="-mx-4 flex w-[calc(100%+2rem)] gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:w-auto sm:flex-wrap sm:px-0" role="group" aria-label="Category">
+          {(['', ...CATEGORIES] as const).map((c) => (
+            <button key={c || 'all'} onClick={() => { setCat(c); setGroup(''); }}
+              className={cx('shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition', cat === c ? 'bg-kbz-navy text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-kbz-navy')}>
+              {c || 'All categories'}
+            </button>
+          ))}
+        </div>
+        <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={low} onChange={(e) => setLow(e.target.checked)} />Low stock only</label>
+        <div className="flex-1" />
+        <div className="flex rounded-xl bg-white p-0.5 ring-1 ring-slate-200" role="group" aria-label="View">
+          <button onClick={() => setView('cards')} className={cx('flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold', view === 'cards' ? 'bg-kbz-navy text-white' : 'text-slate-600')}><LayoutGrid className="h-3.5 w-3.5" />Cards</button>
+          <button onClick={() => setView('table')} className={cx('flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold', view === 'table' ? 'bg-kbz-navy text-white' : 'text-slate-600')}><List className="h-3.5 w-3.5" />Table</button>
+        </div>
+        {can('item.manage') && <Button variant="secondary" onClick={() => onEdit()}><Plus className="h-4 w-4" />New item</Button>}
+      </div>
+
+      {/* Step 1: main item icon cards */}
+      <div className="relative mb-6">
+        <button onClick={() => railRef.current?.scrollBy({ left: -480, behavior: 'smooth' })} aria-label="Scroll main items left"
+          className="absolute -left-3 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 place-items-center rounded-xl bg-white text-slate-500 shadow-md ring-1 ring-slate-200 hover:text-kbz-navy sm:grid"><ChevronLeft className="h-5 w-5" /></button>
+        <div ref={railRef} className="-mx-1 flex snap-x gap-3 overflow-x-auto scroll-smooth px-1 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="listbox" aria-label="Main item">
+          <GroupCard label="All items" count={inCat.length} active={!group} onClick={() => setGroup('')} Icon={LayoutGrid} />
+          {groups.map(({ g, count, low: lowN }) => (
+            <GroupCard key={g.id} label={g.label} count={count} low={lowN} active={group === g.id} onClick={() => setGroup(group === g.id ? '' : g.id)} Icon={g.icon} />
+          ))}
+        </div>
+        <button onClick={() => railRef.current?.scrollBy({ left: 480, behavior: 'smooth' })} aria-label="Scroll main items right"
+          className="absolute -right-3 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 place-items-center rounded-xl bg-white text-slate-500 shadow-md ring-1 ring-slate-200 hover:text-kbz-navy sm:grid"><ChevronRight className="h-5 w-5" /></button>
+      </div>
+
+      {/* Step 2: item cards */}
+      <div className="mb-3 flex items-baseline justify-between gap-2">
+        <h3 className="text-base font-bold text-kbz-dark">{chosen ? chosen.label : cat || 'All items'} <span className="text-sm font-normal text-slate-500">· {rows.length} item{rows.length === 1 ? '' : 's'}</span></h3>
+        <span className="text-xs text-slate-500">Value{month ? ` at end of ${monthLabel(month)}` : ''}: <b className="text-kbz-dark">{mmk(rows.reduce((t, i) => t + qtyOf(i) * i.unit_cost, 0))}</b></span>
+      </div>
+      {view === 'table' ? <ItemsTable rows={rows} month={month} moves={moves} onEdit={onEdit} /> : rows.length === 0 ? <Empty>No items match.</Empty> : (
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5 2xl:grid-cols-6">
+          {rows.map((i) => <ProductCard key={i.id} item={i} qty={qtyOf(i)} onEdit={can('item.manage') ? () => onEdit(i) : undefined} />)}
+        </div>
+      )}
+    </>
+  );
+}
+
+function GroupCard({ label, count, low, active, onClick, Icon }: { label: string; count: number; low?: number; active: boolean; onClick: () => void; Icon: LucideIcon }) {
+  return (
+    <button onClick={onClick} role="option" aria-selected={active} aria-label={`${label}, ${count} item${count === 1 ? '' : 's'}${low ? `, ${low} low stock` : ''}`}
+      className={cx('group relative flex w-[7.75rem] shrink-0 snap-start flex-col items-center gap-2 rounded-3xl px-2 py-4 text-center transition',
+        active ? 'bg-kbz-navy text-white shadow-[0_12px_28px_-14px_rgba(0,45,114,0.8)]' : 'bg-white text-kbz-dark shadow-[0_6px_20px_-12px_rgba(15,23,42,0.25)] hover:-translate-y-0.5')}>
+      {!!low && <span className="absolute right-2 top-2 rounded-full bg-kbz-red px-1.5 text-[10px] font-bold text-white">{low}</span>}
+      <span className={cx('grid h-14 w-14 place-items-center rounded-full', active ? 'bg-white text-kbz-navy' : 'bg-slate-50 text-kbz-dark ring-1 ring-slate-100')}>
+        <Icon className="h-7 w-7" strokeWidth={1.5} />
+      </span>
+      <span className="text-xs font-semibold leading-tight">{label}</span>
+      <span className={cx('text-[10px]', active ? 'text-white/70' : 'text-slate-400')}>{count} item{count === 1 ? '' : 's'}</span>
+    </button>
+  );
+}
+
+function ProductCard({ item: i, qty, onEdit }: { item: Item; qty: number; onEdit?: () => void }) {
+  const { can } = useData();
+  const nav = useNavigate();
+  const g = groupOf(i);
+  const out = qty <= 0;
+  const isLow = !out && qty <= i.min_level;
+  const { url } = useFileUrl(i.photo);
+  return (
+    <div className={cx('group relative flex flex-col rounded-2xl bg-white p-3 shadow-[0_6px_22px_-12px_rgba(15,23,42,0.3)] transition hover:shadow-[0_14px_30px_-14px_rgba(15,23,42,0.35)]', !i.active && 'opacity-60')}>
+      {(out || isLow || !i.active) && (
+        <span className={cx('absolute left-3 top-3 z-10 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase',
+          !i.active ? 'bg-slate-200 text-slate-600' : out ? 'bg-slate-700 text-white' : 'bg-rose-100 text-kbz-red')}>
+          {!i.active ? 'Inactive' : out ? 'Out of stock' : 'Low stock'}
+        </span>
+      )}
+      {onEdit && (
+        <button onClick={onEdit} className="absolute right-3 top-3 z-10 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-slate-400 ring-1 ring-slate-200 hover:text-kbz-navy" aria-label={`Edit ${i.name}`}>
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+      )}
+      <div className="grid h-36 place-items-center overflow-hidden rounded-xl bg-white">
+        {url ? <img src={url} alt={i.name} className="h-36 w-full object-contain" loading="lazy" />
+          : <span className="grid h-24 w-24 place-items-center rounded-full bg-navy-50 text-kbz-navy"><g.icon className="h-12 w-12" strokeWidth={1.25} /></span>}
+      </div>
+      <div className="mt-3 text-[11px] text-slate-400">{g.label} · {i.unit}</div>
+      <div className="mt-0.5 line-clamp-2 min-h-[2.5rem] text-sm font-semibold leading-snug text-kbz-dark">{i.name}</div>
+      <div className="mt-2 flex items-end justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-sm font-bold tabular-nums text-kbz-blue">{num(i.unit_cost)} <span className="text-[11px] font-medium text-slate-400">MMK / {i.unit}</span></div>
+          <div className={cx('text-[11px] font-semibold tabular-nums', out || isLow ? 'text-kbz-red' : 'text-emerald-700')}>{num(qty)} in stock{isLow ? ` · min ${num(i.min_level)}` : ''}</div>
+        </div>
+        {can('request.create') && i.active && (
+          <button onClick={() => nav(`/requests?new=1&item=${i.id}`)} disabled={out} title={out ? 'Out of stock' : 'Request this item'}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-kbz-dark transition hover:bg-kbz-navy hover:text-white disabled:opacity-40" aria-label={`Request ${i.name}`}>
+            <ShoppingBasket className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -262,6 +374,7 @@ function ItemModal({ item, onClose }: { item?: Item; onClose: () => void }) {
   const [f, setF] = useState({
     name: item?.name ?? '', category: item?.category ?? ('Refreshments' as Category), classification: item?.classification ?? 'Consumable',
     unit: item?.unit ?? 'Piece', unit_cost: String(item?.unit_cost ?? ''), min_level: String(item?.min_level ?? ''), active: item?.active ?? true,
+    item_group: item ? groupOf(item).id : '',
   });
   const { busy, error, run } = useSubmit();
   // undefined = keep current photo, null = remove, File = replace
@@ -270,7 +383,7 @@ function ItemModal({ item, onClose }: { item?: Item; onClose: () => void }) {
   return (
     <Modal open onClose={onClose} title={item ? `Edit ${item.name}` : 'New inventory item'} footer={<>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
-      <Button busy={busy} onClick={() => run(async () => { await actions.saveItem({ ...f, id: item?.id, unit_cost: Number(f.unit_cost), min_level: Number(f.min_level) }, photo); toast('Item saved'); onClose(); })}>Save</Button>
+      <Button busy={busy} onClick={() => run(async () => { await actions.saveItem({ ...f, item_group: f.item_group || null, id: item?.id, unit_cost: Number(f.unit_cost), min_level: Number(f.min_level) }, photo); toast('Item saved'); onClose(); })}>Save</Button>
     </>}>
       <div className="mb-4 flex items-center gap-4">
         {preview ? <img src={preview} alt="New photo" className="h-24 w-24 rounded-lg border border-silver-200 object-cover" /> : <Thumb att={photo === null ? null : item?.photo} alt={item?.name ?? ''} size={96} />}
@@ -286,7 +399,10 @@ function ItemModal({ item, onClose }: { item?: Item; onClose: () => void }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Unit" required><input className="input" value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} /></Field>
         <Field label="Name" required className="sm:col-span-2"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
-        <Field label="Category"><select className="input" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value as Category })}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></Field>
+        <Field label="Category"><select className="input" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value as Category, item_group: '' })}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></Field>
+        <Field label="Main item" hint="The icon card it appears under"><select className="input" value={f.item_group} onChange={(e) => setF({ ...f, item_group: e.target.value })}>
+          <option value="">Choose automatically from the name</option>{groupsFor(f.category).map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+        </select></Field>
         <Field label="Classification"><select className="input" value={f.classification} onChange={(e) => setF({ ...f, classification: e.target.value as Item['classification'] })}>{CLASSIFICATIONS.map((c) => <option key={c}>{c}</option>)}</select></Field>
         <Field label="Cost per unit (MMK)"><input className="input" type="number" min="0" value={f.unit_cost} onChange={(e) => setF({ ...f, unit_cost: e.target.value })} /></Field>
         <Field label="Minimum level" hint="Red alert at or below this"><input className="input" type="number" min="0" value={f.min_level} onChange={(e) => setF({ ...f, min_level: e.target.value })} /></Field>

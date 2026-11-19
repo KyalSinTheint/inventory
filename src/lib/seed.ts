@@ -5,6 +5,7 @@ import type {
   MaterialRequest, Profile, Settings, StockTxn,
 } from './types';
 import { budgetCategory, stockDelta } from './logic';
+import { guessGroup } from './itemGroups';
 
 const day = 86_400_000;
 const iso = (d: Date) => d.toISOString();
@@ -66,7 +67,7 @@ export function buildSeed(): DataSet {
   const add = (cat: Category, prefix: string, rows: Row[], dflt: Classification) => rows.forEach(([name, unit, cost, min, , cls], i) => {
     items.push({
       id: id('itm'), code: `${prefix}-${String(i + 1).padStart(3, '0')}`, name, category: cat, classification: cls ?? dflt,
-      unit, unit_cost: cost, min_level: min, qty_on_hand: 0, active: true, photo: null, created_at: iso(ago(200)),
+      unit, unit_cost: cost, min_level: min, qty_on_hand: 0, active: true, photo: null, item_group: guessGroup(name, cat), created_at: iso(ago(200)),
     });
   });
   add('Refreshments', 'RF', REFRESHMENTS, 'Consumable');

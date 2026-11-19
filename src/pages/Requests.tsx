@@ -53,12 +53,12 @@ export default function RequestsPage() {
         })}
         {rows.length === 0 && <Empty>No requests.</Empty>}
       </div>
-      {edit && <RequestModal request={edit === 'new' ? undefined : edit} onClose={() => setEdit(null)} />}
+      {edit && <RequestModal request={edit === 'new' ? undefined : edit} initialItem={edit === 'new' ? params.get('item') ?? undefined : undefined} onClose={() => setEdit(null)} />}
     </>
   );
 }
 
-function RequestModal({ request, onClose }: { request?: MaterialRequest; onClose: () => void }) {
+function RequestModal({ request, initialItem, onClose }: { request?: MaterialRequest; initialItem?: string; onClose: () => void }) {
   const { data, actions } = useData();
   const toast = useToast();
   const batches = data.batches.filter((b) => b.status !== 'Completed' || b.id === request?.batch_id);
@@ -67,7 +67,7 @@ function RequestModal({ request, onClose }: { request?: MaterialRequest; onClose
   const [remarks, setRemarks] = useState(request?.remarks ?? '');
   const [file, setFile] = useState<File[]>([]);
   const [removeFile, setRemoveFile] = useState(false);
-  const [lines, setLines] = useState<{ item_id: string; qty: string }[]>(request?.lines.map((l) => ({ item_id: l.item_id, qty: String(l.qty) })) ?? [{ item_id: '', qty: '' }]);
+  const [lines, setLines] = useState<{ item_id: string; qty: string }[]>(request?.lines.map((l) => ({ item_id: l.item_id, qty: String(l.qty) })) ?? [{ item_id: initialItem && data.items.some((i) => i.id === initialItem) ? initialItem : '', qty: '' }]);
   const { busy, error, run } = useSubmit();
   const item = (id: string) => data.items.find((i) => i.id === id);
   const total = lines.reduce((s, l) => s + Number(l.qty || 0) * (item(l.item_id)?.unit_cost ?? 0), 0);

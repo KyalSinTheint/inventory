@@ -203,3 +203,26 @@ test('budget categories: License split by branch; actuals by category and month'
   assert.equal(months[6].total, 50);
   assert.equal(months[11].cumulative, 2350);
 });
+
+test('main item groups: every sample item lands in a sensible group', async () => {
+  const { guessGroup, groupOf } = await import('./itemGroups');
+  const s = buildSeed();
+  const by = (name: string) => groupOf(s.items.find((i) => i.name === name)!).id;
+  assert.equal(by('Coffee - Royal'), 'coffee');
+  assert.equal(by('Lemon Tea'), 'tea');
+  assert.equal(by('Nagar Pyan Tea Mix'), 'tea');
+  assert.equal(by('Cup Cake'), 'cakes');
+  assert.equal(by('Paper Cups (Hot)'), 'tableware');
+  assert.equal(by('Amico Drinking Water (1L)'), 'drinks');
+  assert.equal(by('YCP Water Bottle'), 'merch');
+  assert.equal(by('Internship Uniform'), 'apparel');
+  assert.equal(by('Badge - Gold'), 'badges');
+  assert.equal(by('Flipchart Stand'), 'stands');
+  assert.equal(by('Flipchart Paper'), 'stationery');
+  assert.equal(by('License Exam Textbook'), 'books');
+  const other = s.items.filter((i) => groupOf(i).id.startsWith('other-')).map((i) => i.name);
+  assert.deepEqual(other, [], `items without a main item: ${other.join(', ')}`);
+  assert.equal(guessGroup('Something new', 'Refreshments'), 'other-refreshments');
+  // a saved choice wins over the name
+  assert.equal(groupOf({ name: 'Coffee - Royal', category: 'Refreshments', item_group: 'tea' }).id, 'tea');
+});
