@@ -72,7 +72,7 @@ export default function Dashboard() {
           text="Check-in, check-out, maintenance and condition log."
           stat={`${assetsOut} of ${assetsLive} checked out`}
           art={<CaseArt />} />
-        <ModuleCard no="04" to={isApprover ? '/approvals' : '/requests'} title={<>Approvals &amp;<br />requests</>} tone="red"
+        <ModuleCard no="04" to={isApprover ? '/approvals' : '/requests'} title={<>Approvals &amp;<br />requests</>} tone="teal"
           text="Refunds, forfeitures, material requests and stock sign-off."
           stat={isApprover ? `${counts.total} waiting for you` : `${pendingAll} pending in total`}
           flag={isApprover && counts.total ? { text: 'Action needed', tone: 'amber' } : undefined}
@@ -142,7 +142,7 @@ const TONE = {
   navy: 'from-[#002d72] to-[#0047ab]',
   logo: 'from-[#0c4f7a] to-[#12669e]',
   sky: 'from-[#0a6a9e] to-[#1590cc]',
-  red: 'from-[#a30d24] to-[#e31837]',
+  teal: 'from-[#0a5459] to-[#0f7c80]',
   dark: 'from-[#071a33] to-[#13315c]',
   graphite: 'from-[#3a3f46] to-[#5f656d]',
 } as const;
@@ -163,7 +163,7 @@ function ModuleCard({ no, to, title, text, stat, flag, art, tone }: {
           <span className={cx('mt-2 inline-flex w-fit rounded-full bg-white px-2 py-0.5 text-[10px] font-bold', flag.tone === 'red' ? 'text-kbz-red' : 'text-amber-700')}>{flag.text}</span>
         )}
         <span className="mt-auto pt-5">
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-white text-kbz-dark transition group-hover:bg-kbz-red group-hover:text-white">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-white text-kbz-dark transition group-hover:bg-[#20a0d8] group-hover:text-white">
             <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
           </span>
         </span>
