@@ -39,9 +39,9 @@ export default function Dashboard() {
       {/* Hero */}
       <div className="mb-8 flex flex-col justify-between gap-6 pt-2 lg:flex-row lg:items-end">
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">L&amp;D Portal</div>
-          <h1 className="mt-2 text-4xl font-medium leading-[1.05] tracking-tight text-neutral-900 sm:text-5xl">
-            Training &amp; deposits<br /><span className="font-serif text-[1.08em] font-normal italic">at a glance.</span>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-kbz-red">L&amp;D Portal</div>
+          <h1 className="mt-2 text-4xl font-semibold leading-[1.05] tracking-tight text-kbz-dark sm:text-5xl">
+            Training &amp; deposits<br /><span className="font-normal text-kbz-blue">at a glance.</span>
           </h1>
         </div>
         <div className="max-w-sm text-sm leading-relaxed text-neutral-500">
@@ -58,36 +58,36 @@ export default function Dashboard() {
 
       {/* Six module cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <ModuleCard no="01" to="/deposits" title={<>License<br />deposits</>} tint="rgba(255,150,190,0.28)"
+        <ModuleCard no="01" to="/deposits" title={<>License<br />deposits</>} tone="navy"
           text="Register, refund and forfeit license class deposits."
           stat={`${mmk(dep.held)} held · ${dep.heldCount} trainees`}
           flag={expiring.length ? { text: `${expiring.length} near term end`, tone: 'amber' } : undefined}
           art={<PanesArt />} />
-        <ModuleCard no="02" to="/inventory" title={<>Inventory<br />stock control</>} tint="rgba(255,190,220,0.30)"
+        <ModuleCard no="02" to="/inventory" title={<>Inventory<br />stock control</>} tone="logo"
           text="Refreshments, training materials, YCP and office supplies."
           stat={`${mmk(valuation)} in stock`}
           flag={low.length ? { text: `${low.length} low stock`, tone: 'red' } : undefined}
           art={<OrbArt />} />
-        <ModuleCard no="03" to="/assets" title={<>Reusable<br />assets</>} tint="rgba(230,180,255,0.28)"
+        <ModuleCard no="03" to="/assets" title={<>Reusable<br />assets</>} tone="sky"
           text="Check-in, check-out, maintenance and condition log."
           stat={`${assetsOut} of ${assetsLive} checked out`}
           art={<CaseArt />} />
-        <ModuleCard no="04" to={isApprover ? '/approvals' : '/requests'} title={<>Approvals &amp;<br />requests</>} tint="rgba(150,205,255,0.32)"
+        <ModuleCard no="04" to={isApprover ? '/approvals' : '/requests'} title={<>Approvals &amp;<br />requests</>} tone="red"
           text="Refunds, forfeitures, material requests and stock sign-off."
           stat={isApprover ? `${counts.total} waiting for you` : `${pendingAll} pending in total`}
           flag={isApprover && counts.total ? { text: 'Action needed', tone: 'amber' } : undefined}
           art={<WindowArt />} />
-        <ModuleCard no="05" to="/budget" title={<>Budget &amp;<br />reports</>} tint="rgba(255,195,160,0.32)"
+        <ModuleCard no="05" to="/budget" title={<>Budget &amp;<br />reports</>} tone="dark"
           text="Monthly spend, category budgets and Excel export."
           stat={budget ? `${utilizationPct(budget, spent).toFixed(0)}% of FY${year} budget used` : `${mmk(spent)} spent in FY${year}`}
           art={<LayersArt />} />
         {can('export') ? (
-          <ModuleCard no="06" to="/audit" title={<>Audit trail<br />&amp; security</>} tint="rgba(180,240,190,0.34)"
+          <ModuleCard no="06" to="/audit" title={<>Audit trail<br />&amp; security</>} tone="graphite"
             text="Every change recorded with user, time and IP address."
             stat={`${num(data.audit_logs.length)} log ${data.audit_logs.length === 1 ? 'entry' : 'entries'}`}
             art={<WaveOrbArt />} />
         ) : (
-          <ModuleCard no="06" to="/batches" title={<>Training<br />batches</>} tint="rgba(180,240,190,0.34)"
+          <ModuleCard no="06" to="/batches" title={<>Training<br />batches</>} tone="graphite"
             text="Corporate, Agency, YCP, License and Product & Soft Skills classes."
             stat={`${data.batches.filter((b) => b.status !== 'Completed').length} active or planned`}
             art={<WaveOrbArt />} />
@@ -131,30 +131,39 @@ export default function Dashboard() {
 
 function QuickLink({ to, children }: { to: string; children: ReactNode }) {
   return (
-    <Link to={to} className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-800 transition hover:border-neutral-900">
+    <Link to={to} className="inline-flex items-center gap-1.5 rounded-full bg-kbz-navy px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-kbz-blue">
       + {children}
     </Link>
   );
 }
 
-function ModuleCard({ no, to, title, text, stat, flag, art, tint }: {
-  no: string; to: string; title: ReactNode; text: string; stat: string; flag?: { text: string; tone: 'red' | 'amber' }; art: ReactNode; tint: string;
+/** Deep KBZ brand colours (navy, logo blues, red, graphite) with white text. */
+const TONE = {
+  navy: 'from-[#002d72] to-[#0047ab]',
+  logo: 'from-[#0c4f7a] to-[#12669e]',
+  sky: 'from-[#0a6a9e] to-[#1590cc]',
+  red: 'from-[#a30d24] to-[#e31837]',
+  dark: 'from-[#071a33] to-[#13315c]',
+  graphite: 'from-[#3a3f46] to-[#5f656d]',
+} as const;
+
+function ModuleCard({ no, to, title, text, stat, flag, art, tone }: {
+  no: string; to: string; title: ReactNode; text: string; stat: string; flag?: { text: string; tone: 'red' | 'amber' }; art: ReactNode; tone: keyof typeof TONE;
 }) {
   return (
     <Link to={to}
-      className="group relative flex min-h-[15.5rem] flex-col overflow-hidden rounded-3xl bg-[#f3f2ef] p-6 transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-20px_rgba(15,23,42,0.35)]"
-      style={{ backgroundImage: `radial-gradient(circle at 85% 55%, ${tint}, transparent 62%)` }}>
-      <div className="pointer-events-none absolute -right-4 top-1/2 h-[92%] w-[60%] -translate-y-1/2 transition duration-500 group-hover:scale-[1.04] sm:w-[56%]" aria-hidden>{art}</div>
+      className={cx('group relative flex min-h-[15.5rem] flex-col overflow-hidden rounded-3xl bg-gradient-to-br p-6 text-white shadow-[0_14px_34px_-18px_rgba(0,45,114,0.6)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_44px_-18px_rgba(0,45,114,0.7)]', TONE[tone])}>
+      <div className="pointer-events-none absolute -right-4 top-1/2 h-[92%] w-[60%] -translate-y-1/2 opacity-90 transition duration-500 group-hover:scale-[1.04] sm:w-[56%]" aria-hidden>{art}</div>
       <div className="relative z-10 flex max-w-[58%] flex-1 flex-col">
-        <div className="text-[11px] font-medium text-neutral-500">{no}</div>
-        <h2 className="mt-3 text-[1.35rem] font-medium leading-[1.15] tracking-tight text-neutral-900">{title}</h2>
-        <p className="mt-3 text-xs leading-relaxed text-neutral-500">{text}</p>
-        <p className="mt-2 font-mono text-[11px] font-semibold text-neutral-700">{stat}</p>
+        <div className="text-[11px] font-semibold text-white/60">{no}</div>
+        <h2 className="mt-3 text-[1.35rem] font-semibold leading-[1.15] tracking-tight">{title}</h2>
+        <p className="mt-3 text-xs leading-relaxed text-white/75">{text}</p>
+        <p className="mt-2 text-xs font-semibold tabular-nums text-white">{stat}</p>
         {flag && (
-          <span className={cx('mt-2 inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold', flag.tone === 'red' ? 'bg-rose-100 text-kbz-red' : 'bg-amber-100 text-amber-800')}>{flag.text}</span>
+          <span className={cx('mt-2 inline-flex w-fit rounded-full bg-white px-2 py-0.5 text-[10px] font-bold', flag.tone === 'red' ? 'text-kbz-red' : 'text-amber-700')}>{flag.text}</span>
         )}
         <span className="mt-auto pt-5">
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-neutral-900 text-white transition group-hover:bg-kbz-navy">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-white text-kbz-dark transition group-hover:bg-kbz-red group-hover:text-white">
             <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
           </span>
         </span>
@@ -183,7 +192,7 @@ function Row({ to, title, sub, right, tone }: { to: string; title: string; sub: 
           <div className="truncate text-sm text-neutral-900">{title}</div>
           <div className="truncate text-xs text-neutral-400">{sub}</div>
         </div>
-        <span className={cx('shrink-0 font-mono text-xs font-semibold', tone === 'red' ? 'text-kbz-red' : 'text-amber-700')}>{right}</span>
+        <span className={cx('shrink-0 text-xs font-semibold tabular-nums', tone === 'red' ? 'text-kbz-red' : 'text-amber-700')}>{right}</span>
       </Link>
     </li>
   );
