@@ -41,7 +41,7 @@ export default function Dashboard() {
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-kbz-red">L&amp;D Portal</div>
           <h1 className="mt-2 text-4xl font-semibold leading-[1.05] tracking-tight text-kbz-dark sm:text-5xl">
-            Training &amp; deposits<br /><span className="font-normal text-kbz-blue">at a glance.</span>
+            Training &amp; Deposits<br /><span className="font-normal text-kbz-blue">at a glance.</span>
           </h1>
         </div>
         <div className="max-w-sm text-sm leading-relaxed text-neutral-500">
