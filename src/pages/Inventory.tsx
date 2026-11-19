@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowDownToLine, ArrowLeft, Camera, Info, LayoutGrid, List, Pencil, ShoppingBasket, Plus, RotateCcw, SlidersHorizontal, ClipboardCheck, Trash2 } from 'lucide-react';
 import { stockMovement, type MovementRow } from './reportSpecs';
 import { groupOf, groupsFor, iconFor, ICONS, type ItemGroup } from '../lib/itemGroups';
+import { GlassArea, GlassBackdrop, glass } from '../components/glass';
 import type { LucideIcon } from 'lucide-react';
 import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { FileLink, FilePicker, Thumb, useFileUrl } from '../components/files';
@@ -173,13 +174,7 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit, onStockIn }: {
           <h3 className="mb-3 text-base font-bold text-kbz-dark">Choose a main item <span className="text-sm font-normal text-slate-500">· {groups.length} groups</span></h3>
           {groups.length === 0 ? <Empty>No items match.</Empty> : (
             <div className="relative isolate">
-            {/* soft brand-colour light behind the glass cards */}
-            <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[2rem]">
-              <div className="absolute -left-10 top-0 h-72 w-72 rounded-full bg-[#20a0d8]/55 blur-3xl" />
-              <div className="absolute right-0 top-1/4 h-80 w-80 rounded-full bg-kbz-navy/40 blur-3xl" />
-              <div className="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-[#0f7c80]/35 blur-3xl" />
-              <div className="absolute -bottom-10 right-1/4 h-60 w-60 rounded-full bg-[#8fd3f2]/60 blur-3xl" />
-            </div>
+            <GlassBackdrop />
             <div className="grid grid-cols-2 gap-4 p-1 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6" role="list" aria-label="Main items">
               {groups.map(({ g, count, low: lowN }) => (
                 <GroupCard key={g.id} label={g.label} count={count} low={lowN} onClick={() => setGroup(g.id)} Icon={g.icon}
@@ -221,9 +216,9 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit, onStockIn }: {
             <span className="ml-auto text-xs text-slate-500">Value{month ? ` at end of ${monthLabel(month)}` : ''}: <b className="text-kbz-dark">{mmk(rows.reduce((t, i) => t + qtyOf(i) * i.unit_cost, 0))}</b></span>
           </div>
           {view === 'table' ? <ItemsTable rows={rows} month={month} moves={moves} onEdit={onEdit} /> : rows.length === 0 ? <Empty>No items match.</Empty> : (
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            <GlassArea className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {rows.map((i) => <ProductCard key={i.id} item={i} qty={qtyOf(i)} showGroup={searching || group === 'all'} onOpen={() => setDetail(i)} onEdit={manage ? () => onEdit(i) : undefined} />)}
-            </div>
+            </GlassArea>
           )}
           {chosen && !searching && rows.length === 0 && manage && (
             <div className="mt-3 text-center"><Button onClick={() => onEdit(undefined, chosen.id)}><Plus className="h-4 w-4" />Add the first item to {chosen.label}</Button></div>
@@ -450,7 +445,8 @@ function ProductCard({ item: i, qty, onEdit, onOpen, showGroup }: { item: Item; 
   };
   const photoInput = canPhoto && <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={uploading} onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ''; }} />;
   return (
-    <div className={cx('group relative flex flex-col overflow-hidden rounded-2xl bg-white shadow-[0_6px_22px_-12px_rgba(15,23,42,0.3)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-14px_rgba(15,23,42,0.35)]', !i.active && 'opacity-60')}>
+    <div className={cx('group relative flex flex-col overflow-hidden rounded-3xl transition duration-300 hover:-translate-y-1 hover:bg-white/70', glass, !i.active && 'opacity-60')}>
+      <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white/60 to-transparent" />
       <div className="relative p-3 pb-0">
         {(out || isLow || !i.active) && (
           <span className={cx('absolute left-3 top-3 z-10 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', !i.active ? 'bg-slate-200 text-slate-600' : out ? 'bg-slate-700 text-white' : 'bg-rose-100 text-kbz-red')}>
@@ -462,7 +458,7 @@ function ProductCard({ item: i, qty, onEdit, onOpen, showGroup }: { item: Item; 
             <Pencil className="h-3.5 w-3.5" />
           </button>
         )}
-        <div className="relative mt-7 h-36 overflow-hidden rounded-xl bg-white">
+        <div className="relative mt-7 h-36 overflow-hidden rounded-2xl bg-white/85 ring-1 ring-white">
           {url ? (
             <button onClick={onOpen} className="block h-36 w-full" aria-label={`Photo of ${i.name}`}><img src={url} alt={i.name} className="h-36 w-full object-contain" loading="lazy" /></button>
           ) : canPhoto ? (
@@ -483,8 +479,8 @@ function ProductCard({ item: i, qty, onEdit, onOpen, showGroup }: { item: Item; 
           )}
         </div>
       </div>
-      <div className="flex flex-1 flex-col p-3">
-        <div className="text-[11px] text-slate-400">{showGroup ? `${g.label} · ` : ''}{i.unit}{i.pack_qty ? ` of ${i.pack_qty} ${plural(i.pack_qty, pieceLabel(i))}` : ''}</div>
+      <div className="relative flex flex-1 flex-col p-3">
+        <div className="text-[11px] text-slate-500">{showGroup ? `${g.label} · ` : ''}{i.unit}{i.pack_qty ? ` of ${i.pack_qty} ${plural(i.pack_qty, pieceLabel(i))}` : ''}</div>
         <button onClick={onOpen} className="mt-0.5 line-clamp-2 min-h-[2.5rem] text-left text-sm font-semibold leading-snug text-kbz-dark hover:underline">{i.name}</button>
         <div className="mt-auto flex items-end justify-between gap-2 pt-2">
           <div className="min-w-0">
@@ -492,7 +488,7 @@ function ProductCard({ item: i, qty, onEdit, onOpen, showGroup }: { item: Item; 
             <div className={cx('text-[11px] font-semibold tabular-nums', out || isLow ? 'text-kbz-red' : 'text-emerald-700')}>{num(qty)} in stock</div>
           </div>
           <button onClick={onOpen} aria-label={`Details of ${i.name}`}
-            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-kbz-dark transition hover:bg-kbz-navy hover:text-white">
+            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/80 px-3 py-2 text-xs font-semibold text-kbz-dark ring-1 ring-white shadow-sm transition hover:bg-kbz-navy hover:text-white">
             <Info className="h-3.5 w-3.5" />Details
           </button>
         </div>
