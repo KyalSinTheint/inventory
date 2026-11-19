@@ -3,6 +3,7 @@
 @theme {
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Myanmar Text', 'Pyidaungsu', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
   /* KBZ Life corporate palette (matches the Gemini L&D portal) */
   --color-kbz-dark: #0a2540;
   --color-kbz-navy: #002d72;
