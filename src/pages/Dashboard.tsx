@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { useData } from '../lib/store';
 import { approvalCounts, lowStockItems, retentionAlerts } from '../lib/alerts';
-import { depositTotals, utilizationPct, yearActual } from '../lib/logic';
+import { depositTotals, fmtQty, utilizationPct, yearActual } from '../lib/logic';
 import { date, mmk, num, today } from '../lib/format';
 import { CATEGORIES, ROLE_LABELS } from '../lib/types';
 import { PageHeader, cx } from '../components/ui';
@@ -41,7 +41,7 @@ export default function Dashboard() {
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-kbz-red">L&amp;D Portal</div>
           <h1 className="mt-2 text-4xl font-semibold leading-[1.05] tracking-tight text-kbz-dark sm:text-5xl">
-            Training &amp; Deposits<br /><span className="font-normal text-kbz-blue">at a glance.</span>
+            Training &amp; Deposits
           </h1>
         </div>
         <div className="max-w-sm text-sm leading-relaxed text-neutral-500">
@@ -105,7 +105,7 @@ export default function Dashboard() {
         <Attention title="Low stock" empty="All items are above their minimum level." more={low.length > 5 ? '/inventory?low=1' : undefined}>
           {low.slice(0, 5).map((i) => (
             <Row key={i.id} to={`/inventory?cat=${encodeURIComponent(i.category)}`} title={i.name} sub={i.category}
-              right={`${num(i.qty_on_hand)} / min ${num(i.min_level)}`} tone="red" />
+              right={`${fmtQty(i, i.qty_on_hand)} / min ${num(i.min_level)}`} tone="red" />
           ))}
         </Attention>
       </div>
@@ -152,18 +152,19 @@ function ModuleCard({ no, to, title, text, stat, flag, art, tone }: {
 }) {
   return (
     <Link to={to}
-      className={cx('group relative flex min-h-[15.5rem] flex-col overflow-hidden rounded-3xl bg-gradient-to-br p-6 text-white shadow-[0_14px_34px_-18px_rgba(0,45,114,0.6)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_44px_-18px_rgba(0,45,114,0.7)]', TONE[tone])}>
-      <div className="pointer-events-none absolute -right-4 top-1/2 h-[92%] w-[60%] -translate-y-1/2 opacity-90 transition duration-500 group-hover:scale-[1.04] sm:w-[56%]" aria-hidden>{art}</div>
-      <div className="relative z-10 flex max-w-[58%] flex-1 flex-col">
-        <div className="text-[11px] font-semibold text-white/60">{no}</div>
-        <h2 className="mt-3 text-[1.35rem] font-semibold leading-[1.15] tracking-tight">{title}</h2>
-        <p className="mt-3 text-xs leading-relaxed text-white/75">{text}</p>
-        <p className="mt-2 text-xs font-semibold tabular-nums text-white">{stat}</p>
+      className={cx('group relative flex min-h-[15rem] flex-col overflow-hidden rounded-3xl bg-gradient-to-br p-6 text-white shadow-[0_14px_34px_-18px_rgba(0,45,114,0.6)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_44px_-18px_rgba(0,45,114,0.7)]', TONE[tone])}>
+      {/* small picture tucked in the top-right corner; the words carry the card */}
+      <div className="pointer-events-none absolute right-4 top-4 h-20 w-24 opacity-90 transition duration-500 group-hover:scale-[1.06]" aria-hidden>{art}</div>
+      <div className="relative z-10 flex flex-1 flex-col">
+        <div className="text-sm font-semibold text-white/60">{no}</div>
+        <h2 className="mt-2 max-w-[calc(100%-6.5rem)] text-[1.75rem] font-semibold leading-[1.12] tracking-tight">{title}</h2>
+        <p className="mt-4 text-[15px] leading-relaxed text-white/85">{text}</p>
+        <p className="mt-2 text-base font-semibold tabular-nums text-white">{stat}</p>
         {flag && (
-          <span className={cx('mt-2 inline-flex w-fit rounded-full bg-white px-2 py-0.5 text-[10px] font-bold', flag.tone === 'red' ? 'text-kbz-red' : 'text-amber-700')}>{flag.text}</span>
+          <span className={cx('mt-2 inline-flex w-fit rounded-full bg-white px-2.5 py-0.5 text-xs font-bold', flag.tone === 'red' ? 'text-kbz-red' : 'text-amber-700')}>{flag.text}</span>
         )}
         <span className="mt-auto pt-5">
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-white text-kbz-dark transition group-hover:bg-[#20a0d8] group-hover:text-white">
+          <span className="grid h-9 w-9 place-items-center rounded-full bg-white text-kbz-dark transition group-hover:bg-[#20a0d8] group-hover:text-white">
             <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
           </span>
         </span>

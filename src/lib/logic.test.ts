@@ -256,3 +256,22 @@ test('price per piece: 1 Pack = 20 sachets', async () => {
   const coffee = buildSeed().items.find((i) => i.name === 'Coffee - Espresso')!;
   assert.deepEqual([coffee.pack_qty, coffee.piece_unit], [20, 'sachet']);
 });
+
+test('packs: issue single pieces out of a pack', async () => {
+  const { pieceChange, fmtQty, checkAvailability, lineValue, piecesIn } = await import('./logic');
+  const coffee = { id: 'c', name: 'Coffee', unit: 'Pack', unit_cost: 6800, pack_qty: 20, piece_unit: 'sachet', qty_on_hand: 3 } as never as import('./types').Item;
+  // 5 sachets out of 3 packs leaves 2 packs + 15 sachets
+  const out = -pieceChange(coffee, 3, -5);
+  assert.equal(out, 0.25);
+  assert.equal(fmtQty(coffee, 3 - out), '2 Pack + 15 sachets');
+  assert.equal(fmtQty(coffee, 0.25), '5 sachets');
+  assert.equal(lineValue({ qty: 5, by_piece: true }, coffee), 1700);
+  // tea: 30 sachets a pack never drifts, 30 single sachets make exactly one pack
+  const tea = { ...coffee, pack_qty: 30 };
+  let onHand = 1;
+  for (let k = 0; k < 30; k++) onHand = Math.round((onHand + pieceChange(tea, onHand, -1)) * 1e6) / 1e6;
+  assert.equal(onHand, 0);
+  assert.equal(piecesIn(tea, 2 / 3), 20);
+  assert.deepEqual(checkAvailability([{ item_id: 'c', qty: 2 }, { item_id: 'c', qty: 20, by_piece: true }], [{ ...coffee, qty_on_hand: 3 }]), []);
+  assert.equal(checkAvailability([{ item_id: 'c', qty: 61, by_piece: true }], [coffee]).length, 1);
+});

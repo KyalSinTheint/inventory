@@ -1,5 +1,5 @@
 import type { ReportSpec } from '../lib/export';
-import { batchActual, budgetCategory, depositTotals, stockDelta, variancePct } from '../lib/logic';
+import { batchActual, budgetCategory, depositTotals, r6, stockDelta, variancePct } from '../lib/logic';
 import type { Asset, Batch, DataSet, Deposit, Item } from '../lib/types';
 import { date, mmk } from '../lib/format';
 
@@ -21,7 +21,8 @@ export function stockMovement(data: DataSet, from: string, to: string): Movement
     const opening = item.qty_on_hand - after(start);
     const inRange = txns.filter((t) => effective(t) >= start && effective(t) <= end);
     const sum = (type: string) => inRange.filter((t) => t.type === type).reduce((s, t) => s + stockDelta(t), 0);
-    return { item, opening, inQty: sum('IN'), outQty: -sum('OUT'), returned: sum('RETURN'), adjusted: sum('ADJUST'), closing, value: closing * item.unit_cost };
+    // Balances may hold part of a pack (sachets issued one by one): keep 6 decimals, no float noise.
+    return { item, opening: r6(opening), inQty: r6(sum('IN')), outQty: r6(-sum('OUT')), returned: r6(sum('RETURN')), adjusted: r6(sum('ADJUST')), closing: r6(closing), value: Math.round(closing * item.unit_cost * 100) / 100 };
   });
 }
 

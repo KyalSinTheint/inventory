@@ -3,7 +3,7 @@ import { createAdapter, type DataAdapter } from './db';
 import { compressImage } from './files';
 import { BUILTIN_IDS, groupOf, groupsFor, guessGroup, ICONS } from './itemGroups';
 import {
-  applyDelta, budgetCategory, can, checkAvailability, depositTransition, isValidNrc, nextRef, validateTrainingDates, normalizeNrc, RuleError, stockDelta, validateLines, validateNewDeposit,
+  applyDelta, budgetCategory, can, canSplit, checkAvailability, fmtPieces, fmtQty, linePieces, pieceChange, piecesIn, r6, depositTransition, isValidNrc, nextRef, validateTrainingDates, normalizeNrc, RuleError, stockDelta, validateLines, validateNewDeposit,
   type DepositAction, type Permission,
 } from './logic';
 import type {
@@ -222,7 +222,7 @@ function makeActions(
       return t;
     },
     /** Returns are recorded immediately: good items go back on the shelf, damaged / lost are logged only. */
-    async stockReturn(input: { item_id: string; qty: number; batch_id: string; condition: ReturnCondition; reason: string }) {
+    async stockReturn(input: { item_id: string; qty: number; by_piece?: boolean; batch_id: string; condition: ReturnCondition; reason: string }) {
       need('stock.create');
       const it = item(input.item_id);
       if (!Number.isInteger(input.qty) || input.qty <= 0) throw new RuleError('Quantity must be a whole number above zero.');
@@ -233,14 +233,20 @@ function makeActions(
         if (t.type === 'OUT') outstanding += t.qty;
         if (t.type === 'RETURN') outstanding -= t.qty;
       }
-      if (input.qty > outstanding) throw new RuleError(`Only ${outstanding} ${it.unit} of ${it.name} are still out with this batch.`);
+      const split = canSplit(it);
+      const pieces = split && input.by_piece ? input.qty : null;
+      const asked = split ? linePieces({ qty: input.qty, by_piece: input.by_piece }, it) : input.qty;
+      const left = split ? piecesIn(it, outstanding) : r6(outstanding);
+      if (asked > left) throw new RuleError(`Only ${fmtQty(it, outstanding)} of ${it.name} ${left === 1 ? 'is' : 'are'} still out with this batch.`);
       if (input.condition !== 'Good' && input.reason.trim().length < 3) throw new RuleError('Describe the damage or loss.');
+      // Good pieces go back on the shelf as an exact number of pieces; damaged / lost ones never touch the balance.
+      const qty = pieces === null ? input.qty : input.condition === 'Good' ? pieceChange(it, it.qty_on_hand, pieces) : r6(pieces / it.pack_qty!);
       const t = await insertWithRef('stock_txns', 'STK', (ref) => ({
-        ...baseTxn(), ref, type: 'RETURN', item_id: it.id, qty: input.qty, unit_cost: it.unit_cost, batch_id: input.batch_id,
+        ...baseTxn(), ref, type: 'RETURN', item_id: it.id, qty, piece_qty: pieces, unit_cost: it.unit_cost, batch_id: input.batch_id,
         condition: input.condition, reason: input.reason.trim() || null, status: 'Approved', decided_by: get().user.id, decided_at: nowIso(),
       }));
       await syncStock(t);
-      await audit('Return', 'stock_txn', t.id, `${t.ref}: ${t.qty} ${it.name} returned (${t.condition})`);
+      await audit('Return', 'stock_txn', t.id, `${t.ref}: ${pieces !== null ? fmtPieces(it, pieces) : `${t.qty} ${it.unit}`} ${it.name} returned (${t.condition})`);
       return t;
     },
     async decideTxn(id: string, approve: boolean, note: string) {
@@ -262,7 +268,10 @@ function makeActions(
     /** file: a new attachment, null to remove it, undefined to keep the current one. */
     async saveRequest(input: { id?: string; batch_id: string; purpose: string; remarks: string; lines: RequestLine[] }, file?: File | null) {
       need('request.create');
-      const lines = input.lines.filter((l) => l.item_id);
+      const lines = input.lines.filter((l) => l.item_id).map((l) => {
+        const it = get().data.items.find((i) => i.id === l.item_id);
+        return it && canSplit(it) && l.by_piece ? { item_id: l.item_id, qty: l.qty, by_piece: true } : { item_id: l.item_id, qty: l.qty };
+      });
       validateLines(lines);
       if (!get().data.batches.some((b) => b.id === input.batch_id)) throw new RuleError('Choose a training batch.');
       const short = checkAvailability(lines, get().data.items);
@@ -300,8 +309,11 @@ function makeActions(
       if (short.length) throw new RuleError(`Cannot issue, stock has changed: ${short.join('; ')}`);
       for (const l of r.lines) {
         const it = item(l.item_id);
+        // Single pieces leave the pack: work out the part of a unit so the balance stays a whole number of pieces.
+        const pieces = canSplit(it) && l.by_piece ? l.qty : null;
+        const qty = pieces !== null ? -pieceChange(it, it.qty_on_hand, -pieces) : l.qty;
         const t = await insertWithRef('stock_txns', 'STK', (ref) => ({
-          ...baseTxn(), ref, type: 'OUT', item_id: it.id, qty: l.qty, unit_cost: it.unit_cost, batch_id: r.batch_id, request_id: r.id,
+          ...baseTxn(), ref, type: 'OUT', item_id: it.id, qty, piece_qty: pieces, unit_cost: it.unit_cost, batch_id: r.batch_id, request_id: r.id,
           reason: r.ref, status: 'Approved', created_by: r.created_by, decided_by: get().user.id, decided_at: nowIso(),
         }));
         await syncStock(t);
@@ -314,14 +326,17 @@ function makeActions(
       need('count.create');
       if (!/^\d{4}-\d{2}$/.test(input.month)) throw new RuleError('Choose the count month.');
       for (const l of input.lines) {
-        if (!Number.isInteger(l.counted_qty) || l.counted_qty < 0) throw new RuleError('Counted quantities must be whole numbers, zero or more.');
+        const it = item(l.item_id);
+        // Split items may be counted to the piece (e.g. 2 packs + 5 sachets = 2.25).
+        const whole = canSplit(it) ? Number.isInteger(r6(l.counted_qty * it.pack_qty!)) : Number.isInteger(l.counted_qty);
+        if (!Number.isFinite(l.counted_qty) || l.counted_qty < 0 || !whole) throw new RuleError('Counted quantities must be whole numbers (or whole pieces), zero or more.');
       }
       const pc: PhysicalCount = await insertWithRef('physical_counts', 'PC', (ref) => ({
         id: uid(), ref, month: input.month, lines: input.lines, note: input.note.trim(), created_by: get().user.id, created_at: nowIso(),
       }));
       let created = 0;
       for (const l of input.lines) {
-        const diff = l.counted_qty - l.system_qty;
+        const diff = r6(l.counted_qty - l.system_qty);
         if (diff === 0) continue;
         const it = item(l.item_id);
         await insertWithRef('stock_txns', 'STK', (ref) => ({

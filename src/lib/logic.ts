@@ -57,7 +57,7 @@ export function stockDelta(t: Pick<StockTxn, 'type' | 'qty' | 'condition'>): num
 
 /** Rule 1: stock may never go below zero. Returns the new balance or throws. */
 export function applyDelta(item: Pick<Item, 'name' | 'qty_on_hand'>, delta: number): number {
-  const next = item.qty_on_hand + delta;
+  const next = r6(item.qty_on_hand + delta);
   if (next < 0) {
     throw new RuleError(`Not enough stock for "${item.name}": ${item.qty_on_hand} available, ${-delta} requested.`);
   }
@@ -66,13 +66,19 @@ export function applyDelta(item: Pick<Item, 'name' | 'qty_on_hand'>, delta: numb
 
 /** Checks every line of a request against available stock (lines for the same item are summed). */
 export function checkAvailability(lines: RequestLine[], items: Item[]): string[] {
+  // Count in pieces for items that are split, so "1 pack + 5 sachets" is compared exactly.
   const need = new Map<string, number>();
-  for (const l of lines) need.set(l.item_id, (need.get(l.item_id) ?? 0) + l.qty);
+  for (const l of lines) {
+    const it = items.find((i) => i.id === l.item_id);
+    need.set(l.item_id, (need.get(l.item_id) ?? 0) + (it ? linePieces(l, it) : l.qty));
+  }
   const problems: string[] = [];
-  for (const [id, qty] of need) {
+  for (const [id, n] of need) {
     const it = items.find((i) => i.id === id);
-    if (!it) problems.push('Unknown item');
-    else if (qty > it.qty_on_hand) problems.push(`${it.name}: ${it.qty_on_hand} available, ${qty} requested`);
+    if (!it) { problems.push('Unknown item'); continue; }
+    const have = canSplit(it) ? piecesIn(it, it.qty_on_hand) : it.qty_on_hand;
+    if (n <= have) continue;
+    problems.push(canSplit(it) ? `${it.name}: ${fmtQty(it, it.qty_on_hand)} available, ${fmtPieces(it, n)} requested` : `${it.name}: ${it.qty_on_hand} available, ${n} requested`);
   }
   return problems;
 }
@@ -84,6 +90,52 @@ export function validateLines(lines: RequestLine[]): void {
     if (!Number.isInteger(l.qty) || l.qty <= 0) throw new RuleError('Quantities must be whole numbers above zero.');
   }
 }
+
+// ---------------------------------------------------------------- packs and pieces
+type PackInfo = Pick<Item, 'unit' | 'pack_qty' | 'piece_unit'>;
+/** Rounds away floating-point noise; balances are kept to 6 decimals (numeric(14,6) in the database). */
+export const r6 = (n: number) => Math.round(n * 1e6) / 1e6;
+/** True when single pieces can be taken out of one unit (e.g. 20 sachets in a pack). */
+export const canSplit = (i: Pick<Item, 'pack_qty'>): boolean => !!i.pack_qty && i.pack_qty > 1;
+/** Whole pieces in a quantity of units (2.25 packs of 20 → 45). */
+export const piecesIn = (i: Pick<Item, 'pack_qty'>, qty: number): number => Math.round(qty * (i.pack_qty || 1));
+/** Pieces a request line asks for (whole units are converted when the item is split). */
+export const linePieces = (l: Pick<RequestLine, 'qty' | 'by_piece'>, i: Pick<Item, 'pack_qty'>): number =>
+  canSplit(i) ? (l.by_piece ? l.qty : l.qty * i.pack_qty!) : l.qty;
+/** Units a request line takes (5 sachets of a 20-pack → 0.25). */
+export const lineUnits = (l: Pick<RequestLine, 'qty' | 'by_piece'>, i: Pick<Item, 'pack_qty'>): number =>
+  canSplit(i) && l.by_piece ? l.qty / i.pack_qty! : l.qty;
+export const lineValue = (l: Pick<RequestLine, 'qty' | 'by_piece'>, i: Pick<Item, 'pack_qty' | 'unit_cost'>): number => lineUnits(l, i) * i.unit_cost;
+
+/**
+ * How many units to move so that `pieces` single pieces leave (negative) or come back (positive)
+ * and the balance stays an exact number of pieces. Returns the signed change in units.
+ */
+export function pieceChange(i: Pick<Item, 'pack_qty'>, onHand: number, pieces: number): number {
+  const pk = i.pack_qty || 1;
+  const now = piecesIn(i, onHand);
+  return r6(r6((now + pieces) / pk) - onHand);
+}
+
+const plural = (n: number, w: string) => (n === 1 || /s$/i.test(w) ? w : `${w}s`);
+const pieceName = (i: Pick<Item, 'piece_unit'>) => i.piece_unit || 'piece';
+/** "45 sachets" */
+export const fmtPieces = (i: Pick<Item, 'piece_unit'>, n: number) => `${n.toLocaleString('en-US')} ${plural(n, pieceName(i))}`;
+
+/** A balance or movement in words: "12 Pack", or "2 Pack + 5 sachets" when part of a pack is involved. */
+export function fmtQty(i: PackInfo, qty: number): string {
+  const neg = qty < 0;
+  const q = Math.abs(qty);
+  if (!canSplit(i)) return `${neg ? '−' : ''}${r6(q).toLocaleString('en-US')} ${i.unit}`;
+  const total = piecesIn(i, q);
+  const whole = Math.floor(total / i.pack_qty!);
+  const rest = total - whole * i.pack_qty!;
+  const parts = [whole || !rest ? `${whole.toLocaleString('en-US')} ${i.unit}` : '', rest ? fmtPieces(i, rest) : ''].filter(Boolean);
+  return `${neg ? '−' : ''}${parts.join(' + ')}`;
+}
+/** A request line in words: "5 sachets" or "2 Pack". */
+export const fmtLine = (l: Pick<RequestLine, 'qty' | 'by_piece'>, i: PackInfo) =>
+  canSplit(i) && l.by_piece ? fmtPieces(i, l.qty) : `${l.qty.toLocaleString('en-US')} ${i.unit}`;
 
 export function isLowStock(item: Pick<Item, 'qty_on_hand' | 'min_level'>): boolean {
   return item.qty_on_hand <= item.min_level;
@@ -318,7 +370,7 @@ export function pendingCount(statuses: { status: ApprovalStatus }[]): number {
 }
 
 export function requestValue(r: MaterialRequest, items: Item[]): number {
-  return r.lines.reduce((s, l) => s + l.qty * (items.find((i) => i.id === l.item_id)?.unit_cost ?? 0), 0);
+  return r.lines.reduce((s, l) => { const it = items.find((i) => i.id === l.item_id); return s + (it ? lineValue(l, it) : 0); }, 0);
 }
 
 // ---------------------------------------------------------------- categories & months
@@ -377,4 +429,14 @@ export function monthlySpend(year: number, txns: StockTxn[], expenses: Expense[]
 /** Price of one piece when a unit holds several (1 Pack = 20 sachets → unit_cost / 20); null when not split. */
 export function piecePrice(item: { unit_cost: number; pack_qty: number | null }): number | null {
   return item.pack_qty && item.pack_qty > 1 ? item.unit_cost / item.pack_qty : null;
+}
+
+/** True when a request line asks for more than is on hand (compared in pieces for split items). */
+export function lineShort(l: Pick<RequestLine, 'qty' | 'by_piece'>, it: Item | undefined): boolean {
+  if (!it) return true;
+  return linePieces(l, it) > (canSplit(it) ? piecesIn(it, it.qty_on_hand) : it.qty_on_hand);
+}
+/** A stock movement in words, using the pieces it was entered in when there are any. */
+export function fmtTxnQty(t: Pick<StockTxn, 'qty' | 'piece_qty'>, it: Pick<Item, 'unit' | 'pack_qty' | 'piece_unit'>): string {
+  return t.piece_qty ? fmtPieces(it, t.piece_qty) : fmtQty(it, Math.abs(t.qty));
 }

@@ -9,7 +9,7 @@ import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { FileLink, FilePicker, Thumb, useFileUrl } from '../components/files';
 import { DOC_ACCEPT } from '../lib/files';
 import { useData } from '../lib/store';
-import { piecePrice } from '../lib/logic';
+import { canSplit, fmtPieces, fmtQty, fmtTxnQty, piecePrice, piecesIn, r6 } from '../lib/logic';
 import { CATEGORIES, CLASSIFICATIONS, TXN_LABELS, type Category, type CountLine, type Item, type ReturnCondition } from '../lib/types';
 import { date, dateTime, mmk, monthEnd, monthLabel, num, thisMonth } from '../lib/format';
 import { Badge, Button, cx, Empty, ErrorNote, Field, Modal, PageHeader, SearchBox, StatusBadge, Tabs, useSubmit, useToast } from '../components/ui';
@@ -71,14 +71,14 @@ function ItemsTable({ rows, month, moves, onEdit }: { rows: Item[]; month: strin
                   <td className="whitespace-nowrap text-xs text-slate-500">{groupOf(i, data.item_groups).label}</td>
                   <td className="whitespace-nowrap">{i.category}</td>
                   {m && <>
-                    <td className="num text-slate-500">{num(m.opening)}</td>
-                    <td className="num text-emerald-700">{m.inQty + Math.max(0, m.adjusted) + m.returned ? `+${num(m.inQty + Math.max(0, m.adjusted) + m.returned)}` : '—'}</td>
-                    <td className="num text-kbz-red">{m.outQty - Math.min(0, m.adjusted) ? `−${num(m.outQty - Math.min(0, m.adjusted))}` : '—'}</td>
+                    <td className="num whitespace-nowrap text-slate-500">{fmtQty(i, m.opening)}</td>
+                    <td className="num whitespace-nowrap text-emerald-700">{m.inQty + Math.max(0, m.adjusted) + m.returned ? `+${fmtQty(i, m.inQty + Math.max(0, m.adjusted) + m.returned)}` : '—'}</td>
+                    <td className="num whitespace-nowrap text-kbz-red">{m.outQty - Math.min(0, m.adjusted) ? `−${fmtQty(i, m.outQty - Math.min(0, m.adjusted))}` : '—'}</td>
                   </>}
-                  <td className="num"><span className={isLow ? 'font-semibold text-red-600' : 'font-medium'}>{num(qty)}</span> <span className="text-xs text-slate-500">{i.unit}</span></td>
+                  <td className="num"><span className={cx('whitespace-nowrap', isLow ? 'font-semibold text-red-600' : 'font-medium')}>{fmtQty(i, qty)}</span></td>
                   <td className="num text-slate-500">{num(i.min_level)}</td>
                   <td className="num">{num(i.unit_cost)}</td>
-                  <td className="num">{num(qty * i.unit_cost)}</td>
+                  <td className="num">{num(Math.round(qty * i.unit_cost))}</td>
                   {can('item.manage') && <td><button className="rounded p-1 text-slate-500 hover:bg-silver-100" onClick={() => onEdit(i)} aria-label={`Edit ${i.name}`}><Pencil className="h-4 w-4" /></button></td>}
                 </tr>
               );
@@ -376,8 +376,8 @@ function ItemDetailModal({ item: i, qty, onClose, onEdit, onStockIn }: { item: I
           <div className="mt-3 grid grid-cols-3 gap-2">
             <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
               <div className="text-[11px] text-slate-500">In stock</div>
-              <div className={cx('text-base font-bold tabular-nums', out || isLow ? 'text-kbz-red' : 'text-kbz-dark')}>{num(qty)} <span className="text-xs font-medium">{i.unit}</span></div>
-              <div className="text-[11px] text-slate-400">{piece !== null ? `${num(qty * i.pack_qty!)} ${plural(qty * i.pack_qty!, pu)} · ` : ''}min {num(i.min_level)}</div>
+              <div className={cx('text-base font-bold tabular-nums', out || isLow ? 'text-kbz-red' : 'text-kbz-dark')}>{fmtQty(i, qty)}</div>
+              <div className="text-[11px] text-slate-400">{piece !== null ? `${fmtPieces(i, piecesIn(i, qty))} · ` : ''}min {num(i.min_level)}</div>
             </div>
             <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
               <div className="text-[11px] text-slate-500">Last bought</div>
@@ -386,7 +386,7 @@ function ItemDetailModal({ item: i, qty, onClose, onEdit, onStockIn }: { item: I
             </div>
             <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
               <div className="text-[11px] text-slate-500">Stock value</div>
-              <div className="text-base font-bold tabular-nums text-kbz-dark">{num(qty * i.unit_cost)}</div>
+              <div className="text-base font-bold tabular-nums text-kbz-dark">{num(Math.round(qty * i.unit_cost))}</div>
               <div className="text-[11px] text-slate-400">MMK</div>
             </div>
           </div>
@@ -415,7 +415,7 @@ function ItemDetailModal({ item: i, qty, onClose, onEdit, onStockIn }: { item: I
             <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-sm">
               <span className="w-24 shrink-0 text-slate-600">{date(when(t))}</span>
               <span className="min-w-0 flex-1 truncate">{topic(t.batch_id)}</span>
-              <b className="tabular-nums">{num(t.qty)} {i.unit}</b>
+              <b className="tabular-nums">{fmtTxnQty(t, i)}</b>
             </li>
           ))}
         </ul>
@@ -485,7 +485,7 @@ function ProductCard({ item: i, qty, onEdit, onOpen, showGroup }: { item: Item; 
         <div className="mt-auto flex items-end justify-between gap-2 pt-2">
           <div className="min-w-0">
             <div className={cx('text-sm font-bold tabular-nums', tone.text)}>{num(i.unit_cost)} <span className="text-[11px] font-medium text-slate-400">MMK / {i.unit}</span></div>
-            <div className={cx('text-[11px] font-semibold tabular-nums', out || isLow ? 'text-kbz-red' : 'text-emerald-700')}>{num(qty)} in stock</div>
+            <div className={cx('text-[11px] font-semibold tabular-nums', out || isLow ? 'text-kbz-red' : 'text-emerald-700')}>{fmtQty(i, qty)} in stock</div>
           </div>
           <button onClick={onOpen} aria-label={`Details of ${i.name}`}
             className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/80 px-3 py-2 text-xs font-semibold text-kbz-dark ring-1 ring-white shadow-sm transition hover:bg-kbz-navy hover:text-white">
@@ -530,9 +530,9 @@ function TxnsTab({ month }: { month: string }) {
                 <td className="whitespace-nowrap">{date(t.created_at)}</td>
                 <td className="whitespace-nowrap">{TXN_LABELS[t.type]}{t.condition && <div className="text-xs text-slate-500">{t.condition}</div>}</td>
                 <td>{item(t.item_id)?.name}{t.attachment && <div className="text-xs"><FileLink att={t.attachment} /></div>}</td>
-                <td className="num">{t.type === 'OUT' ? '−' : t.type === 'ADJUST' && t.qty < 0 ? '−' : '+'}{num(Math.abs(t.qty))}</td>
+                <td className="num whitespace-nowrap">{t.type === 'OUT' ? '−' : t.type === 'ADJUST' && t.qty < 0 ? '−' : '+'}{(() => { const it = item(t.item_id); return it ? fmtTxnQty(t, it) : num(Math.abs(t.qty)); })()}</td>
                 <td className="num">{num(t.unit_cost)}</td>
-                <td className="num font-medium">{num(Math.abs(t.qty) * t.unit_cost)}</td>
+                <td className="num font-medium">{num(Math.round(Math.abs(t.qty) * t.unit_cost))}</td>
                 <td><StatusBadge status={t.status} />{t.status === 'Rejected' && t.decision_note && <div className="mt-1 max-w-48 text-xs text-red-600">{t.decision_note}</div>}</td>
                 <td className="whitespace-nowrap text-xs">{name(t.created_by)}{t.decided_by && <div className="text-slate-500">✓ {name(t.decided_by)}</div>}</td>
               </tr>
@@ -553,7 +553,7 @@ function ItemPicker({ value, onChange, filter }: { value: string; onChange: (v: 
       <option value="">Choose item…</option>
       {CATEGORIES.map((c) => {
         const list = data.items.filter((i) => i.category === c && i.active && (!filter || filter(i)));
-        return list.length ? <optgroup key={c} label={c}>{list.map((i) => <option key={i.id} value={i.id}>{i.name} ({num(i.qty_on_hand)} {i.unit})</option>)}</optgroup> : null;
+        return list.length ? <optgroup key={c} label={c}>{list.map((i) => <option key={i.id} value={i.id}>{i.name} ({fmtQty(i, i.qty_on_hand)})</option>)}</optgroup> : null;
       })}
     </select>
   );
@@ -601,7 +601,8 @@ function StockInModal({ onClose, initialItem = '' }: { onClose: () => void; init
 function ReturnModal({ onClose }: { onClose: () => void }) {
   const { data, actions } = useData();
   const toast = useToast();
-  const [f, setF] = useState({ batch_id: '', item_id: '', qty: '', condition: 'Good' as ReturnCondition, reason: '' });
+  const [f, setF] = useState({ batch_id: '', item_id: '', qty: '', by_piece: false, condition: 'Good' as ReturnCondition, reason: '' });
+  const picked = data.items.find((i) => i.id === f.item_id);
   const { busy, error, run } = useSubmit();
   const issuedItems = useMemo(() => new Set(data.stock_txns.filter((t) => t.type === 'OUT' && t.batch_id === f.batch_id && t.status === 'Approved').map((t) => t.item_id)), [data.stock_txns, f.batch_id]);
   return (
@@ -615,8 +616,17 @@ function ReturnModal({ onClose }: { onClose: () => void }) {
             <option value="">Choose training…</option>{data.batches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </Field>
-        <Field label="Item issued to this batch" required className="sm:col-span-2"><ItemPicker value={f.item_id} onChange={(v) => setF({ ...f, item_id: v })} filter={(i) => issuedItems.has(i.id)} /></Field>
-        <Field label="Quantity" required><input className="input" type="number" min="1" step="1" value={f.qty} onChange={(e) => setF({ ...f, qty: e.target.value })} /></Field>
+        <Field label="Item issued to this batch" required className="sm:col-span-2"><ItemPicker value={f.item_id} onChange={(v) => setF({ ...f, item_id: v, by_piece: false })} filter={(i) => issuedItems.has(i.id)} /></Field>
+        <Field label="Quantity" required>
+          <div className="flex gap-2">
+            <input className="input min-w-0 flex-1" type="number" min="1" step="1" value={f.qty} onChange={(e) => setF({ ...f, qty: e.target.value })} />
+            {picked && canSplit(picked) && (
+              <select className="input w-auto" value={f.by_piece ? 'piece' : 'unit'} onChange={(e) => setF({ ...f, by_piece: e.target.value === 'piece' })} aria-label="Return by">
+                <option value="unit">{picked.unit}</option><option value="piece">{picked.piece_unit || 'piece'}</option>
+              </select>
+            )}
+          </div>
+        </Field>
         <Field label="Condition" required>
           <select className="input" value={f.condition} onChange={(e) => setF({ ...f, condition: e.target.value as ReturnCondition })}>
             <option value="Good">Good: back to stock</option><option value="Damaged">Damaged: log only</option><option value="Lost">Lost: log only</option>
@@ -718,7 +728,10 @@ function CountTab({ month: viewMonth }: { month: string }) {
   const { busy, error, run } = useSubmit();
   const items = data.items.filter((i) => i.active && i.category === cat);
   const entered = items.filter((i) => counted[i.id] !== undefined && counted[i.id] !== '');
-  const variances = entered.filter((i) => Number(counted[i.id]) !== i.qty_on_hand).length;
+  // Split items are counted in single pieces (e.g. 45 sachets), others in whole units.
+  const sysCount = (i: Item) => (canSplit(i) ? piecesIn(i, i.qty_on_hand) : i.qty_on_hand);
+  const toUnits = (i: Item, v: string) => (canSplit(i) ? r6(Number(v) / i.pack_qty!) : Number(v));
+  const variances = entered.filter((i) => Number(counted[i.id]) !== sysCount(i)).length;
   return (
     <div className="space-y-6">
       {can('count.create') && (
@@ -726,7 +739,7 @@ function CountTab({ month: viewMonth }: { month: string }) {
           <div className="mb-3 flex flex-wrap items-end gap-3">
             <Field label="Count month"><input className="input" type="month" value={month} onChange={(e) => setMonth(e.target.value)} /></Field>
             <Field label="Category"><select className="input" value={cat} onChange={(e) => { setCat(e.target.value as Category); setCounted({}); }}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></Field>
-            <Button variant="secondary" onClick={() => setCounted(Object.fromEntries(items.map((i) => [i.id, String(i.qty_on_hand)])))}>Fill with system qty</Button>
+            <Button variant="secondary" onClick={() => setCounted(Object.fromEntries(items.map((i) => [i.id, String(sysCount(i))])))}>Fill with system qty</Button>
           </div>
           <div className="table-wrap">
             <table className="tbl">
@@ -734,12 +747,14 @@ function CountTab({ month: viewMonth }: { month: string }) {
               <tbody>
                 {items.map((i) => {
                   const v = counted[i.id];
-                  const diff = v === undefined || v === '' ? null : Number(v) - i.qty_on_hand;
+                  const diff = v === undefined || v === '' ? null : Number(v) - sysCount(i);
+                  const split = canSplit(i);
+                  const show = (n: number) => (split ? fmtPieces(i, Math.abs(n)) : num(Math.abs(n)));
                   return (
                     <tr key={i.id}>
-                      <td>{i.name}</td><td className="num">{num(i.qty_on_hand)}</td>
-                      <td className="num"><input className="input ml-auto w-24 text-right" type="number" min="0" step="1" value={v ?? ''} onChange={(e) => setCounted({ ...counted, [i.id]: e.target.value })} aria-label={`Counted ${i.name}`} /></td>
-                      <td className={`num font-medium ${diff ? (diff < 0 ? 'text-red-600' : 'text-emerald-700') : 'text-slate-400'}`}>{diff === null ? '' : diff > 0 ? `+${diff}` : diff}</td>
+                      <td>{i.name}</td><td className="num whitespace-nowrap">{fmtQty(i, i.qty_on_hand)}</td>
+                      <td className="num"><div className="flex items-center justify-end gap-1.5"><input className="input w-24 text-right" type="number" min="0" step="1" value={v ?? ''} onChange={(e) => setCounted({ ...counted, [i.id]: e.target.value })} aria-label={`Counted ${i.name}`} /><span className="w-14 text-left text-xs text-slate-500">{split ? `${i.piece_unit || 'piece'}s` : i.unit}</span></div></td>
+                      <td className={`num whitespace-nowrap font-medium ${diff ? (diff < 0 ? 'text-red-600' : 'text-emerald-700') : 'text-slate-400'}`}>{diff === null ? '' : diff > 0 ? `+${show(diff)}` : diff < 0 ? `−${show(diff)}` : '0'}</td>
                     </tr>
                   );
                 })}
@@ -749,7 +764,7 @@ function CountTab({ month: viewMonth }: { month: string }) {
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <Field label="Note" className="min-w-60 flex-1"><input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Counted by…, location…" /></Field>
             <Button busy={busy} disabled={!entered.length} onClick={() => run(async () => {
-              const lines: CountLine[] = entered.map((i) => ({ item_id: i.id, system_qty: i.qty_on_hand, counted_qty: Number(counted[i.id]) }));
+              const lines: CountLine[] = entered.map((i) => ({ item_id: i.id, system_qty: i.qty_on_hand, counted_qty: toUnits(i, counted[i.id]) }));
               const r = await actions.submitCount({ month, lines, note: note || cat });
               toast(`Count saved · ${r.adjustments} adjustment(s) sent for HOD approval`);
               setCounted({}); setNote('');

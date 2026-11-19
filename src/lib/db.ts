@@ -92,8 +92,9 @@ export function demoAdapter(): DataAdapter {
       const it = data.items.find((i) => i.id === txn.item_id);
       if (!it) throw new Error('Item not found');
       const delta = stockDelta(txn);
-      if (it.qty_on_hand + delta < 0) throw new Error(`Not enough stock for "${it.name}" (${it.qty_on_hand} available).`);
-      it.qty_on_hand += delta;
+      const next = Math.round((it.qty_on_hand + delta) * 1e6) / 1e6;
+      if (next < 0) throw new Error(`Not enough stock for "${it.name}" (${it.qty_on_hand} available).`);
+      it.qty_on_hand = next;
       save();
       return it.qty_on_hand;
     },

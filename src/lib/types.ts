@@ -115,11 +115,15 @@ export interface StockTxn {
   decision_note: string | null;
   /** Supplier invoice (stock in). */
   attachment: Attachment | null;
+  /** Set when the movement was entered as single pieces (e.g. 5 sachets); qty is then the part of a pack. */
+  piece_qty?: number | null;
 }
 
 export interface RequestLine {
   item_id: string;
   qty: number;
+  /** True when qty counts single pieces taken out of a pack (e.g. 5 sachets), not whole units. */
+  by_piece?: boolean;
 }
 
 export interface MaterialRequest {

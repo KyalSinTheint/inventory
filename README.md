@@ -45,7 +45,7 @@ with real data before going live.
    `20261115000000_training_end_date.sql` (training start and end dates on deposits), then
    `20261119000000_item_groups.sql` (main item groups for the shop-style inventory), then
    `20261120000000_custom_item_groups.sql` (create / rename main items and choose their icons), then
-   `20261121000000_pack_size.sql` (pieces per pack, for the price per piece). All are safe to run again.
+   `20261121000000_pack_size.sql` (pieces per pack, for the price per piece) and `20261122000000_issue_by_piece.sql` (issue single pieces, e.g. 5 sachets, out of a pack). All are safe to run again.
 3. Copy `.env.example` to `.env` and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
    (Project Settings → API).
 4. `npm run build` and deploy `dist/` (a `vercel.json` is included; any static host works).
