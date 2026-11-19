@@ -22,7 +22,8 @@ export default function LoginPage({ loadError }: { loadError: string | null }) {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-kbz-dark via-kbz-navy to-kbz-blue px-4 py-10">
       <div className="w-full max-w-md">
         <div className="mb-6 text-center text-white">
-          <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-kbz-red text-lg font-extrabold tracking-tight text-white shadow-lg">KBZ</div>
+          <div className="mx-auto mb-3 inline-flex rounded-2xl bg-white px-4 py-2.5 shadow-lg"><img src="/kbz-life-logo.png" alt="KBZ Life Insurance" className="h-16 w-auto" /></div>
+          <br />
           <div className="mb-2 inline-block rounded bg-white/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-200">L&amp;D Portal</div>
           <h1 className="text-xl font-semibold">Training Resource, Inventory & License Deposit Portal</h1>
           <p className="mt-1 text-sm text-slate-300">KBZ Life Insurance · Learning & Development</p>

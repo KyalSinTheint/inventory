@@ -67,14 +67,13 @@ function Shell({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen flex-col">
       <header className="z-30 bg-kbz-dark text-white shadow-md md:sticky md:top-0">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
-          <NavLink to="/" className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-kbz-red text-lg font-extrabold tracking-tight text-white shadow-md">KBZ</div>
+          <NavLink to="/" className="flex min-w-0 items-center gap-3" aria-label="KBZ Life Insurance L&D Portal: home">
+            <span className="flex h-12 shrink-0 items-center rounded-xl bg-white px-2.5 py-1 shadow-md">
+              <img src="/kbz-life-logo.png" alt="KBZ Life Insurance" className="h-10 w-auto" />
+            </span>
             <div className="min-w-0">
-              <div className="flex items-center gap-2 text-base font-bold leading-tight tracking-tight sm:text-lg">
-                <span className="truncate">KBZ Life Insurance</span>
-                <span className="rounded bg-white/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-200">L&amp;D Portal</span>
-              </div>
-              <p className="mt-0.5 hidden text-[11px] leading-tight text-slate-300 sm:block">Training Resource, Inventory &amp; License Deposit Management</p>
+              <span className="rounded bg-white/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-200">L&amp;D Portal</span>
+              <p className="mt-1 hidden text-[11px] leading-tight text-slate-300 sm:block">Training Resource, Inventory &amp; License Deposit Management</p>
             </div>
           </NavLink>
           <div className="flex w-full items-center gap-2 sm:w-auto sm:gap-3">
