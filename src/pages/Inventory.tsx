@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowDownToLine, Camera, ChevronLeft, ChevronRight, LayoutGrid, List, Pencil, ShoppingBasket, Plus, RotateCcw, SlidersHorizontal, ClipboardCheck, Trash2 } from 'lucide-react';
+import { ArrowDownToLine, ArrowLeft, Camera, LayoutGrid, List, Pencil, ShoppingBasket, Plus, RotateCcw, SlidersHorizontal, ClipboardCheck, Trash2 } from 'lucide-react';
 import { stockMovement, type MovementRow } from './reportSpecs';
 import { groupOf, groupsFor } from '../lib/itemGroups';
 import type { LucideIcon } from 'lucide-react';
@@ -88,42 +88,60 @@ function ItemsTable({ rows, month, moves, onEdit }: { rows: Item[]; month: strin
   );
 }
 
-/** Shop-style view: pick a main item (icon cards), then browse item cards. A table view is kept for monthly movements. */
+/**
+ * Shop-style view in two steps:
+ *  1. the main item icon cards only (Coffee, Tea …);
+ *  2. tap one to enter it and see just its item cards (with real photos).
+ * The chosen main item is kept in the URL (?group=coffee) so browser Back returns to step 1.
+ */
 function ItemsTab({ month, lowOnly, initialCat, onEdit }: { month: string; lowOnly: boolean; initialCat: string; onEdit: (i?: Item) => void }) {
   const { data, can } = useData();
+  const [params, setParams] = useSearchParams();
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<Category | ''>((CATEGORIES as readonly string[]).includes(initialCat) ? (initialCat as Category) : '');
-  const [group, setGroup] = useState('');
   const [low, setLow] = useState(lowOnly);
   const [view, setView] = useState<'cards' | 'table'>('cards');
-  const railRef = useRef<HTMLDivElement>(null);
+  const group = params.get('group') ?? '';
+  const setGroup = (g: string) => {
+    const p = new URLSearchParams(params);
+    if (g) p.set('group', g); else p.delete('group');
+    setParams(p, { replace: !g });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const moves = useMemo(() => (month ? new Map(stockMovement(data, `${month}-01`, monthEnd(month)).map((r) => [r.item.id, r])) : null), [data, month]);
   const qtyOf = (i: Item) => moves?.get(i.id)?.closing ?? i.qty_on_hand;
-  const inCat = data.items.filter((i) => (!cat || i.category === cat) && (can('item.manage') || i.active));
+  const visible = data.items.filter((i) => can('item.manage') || i.active);
+  const inCat = visible.filter((i) => !cat || i.category === cat);
   const groups = groupsFor(cat).map((g) => {
     const list = inCat.filter((i) => groupOf(i).id === g.id);
     return { g, count: list.length, low: list.filter((i) => qtyOf(i) <= i.min_level).length };
-  }).filter((x) => x.count > 0);
-  const rows = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    return inCat.filter((i) => (!group || groupOf(i).id === group) && (!low || qtyOf(i) <= i.min_level) && (!s || i.name.toLowerCase().includes(s)))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.items, q, cat, group, low, moves]);
-  const chosen = groups.find((x) => x.g.id === group)?.g;
+  }).filter((x) => x.count > 0 && (!low || x.low > 0));
+  const chosen = group === 'all' ? null : groupsFor('').find((g) => g.id === group) ?? null;
+  const s = q.trim().toLowerCase();
+  const searching = s.length > 0;
+  // Items shown: inside a main item, or every match while searching, or everything in table view.
+  const rows = useMemo(() => visible
+    .filter((i) => (searching ? i.name.toLowerCase().includes(s) : group === 'all' || view === 'table' && !group ? !cat || i.category === cat : groupOf(i).id === group))
+    .filter((i) => !low || qtyOf(i) <= i.min_level)
+    .sort((a, b) => a.name.localeCompare(b.name)),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [data.items, s, group, cat, low, moves, view]);
+  const showGroups = !group && !searching && view === 'cards';
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <SearchBox value={q} onChange={setQ} placeholder="Search item" />
-        <div className="-mx-4 flex w-[calc(100%+2rem)] gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:w-auto sm:flex-wrap sm:px-0" role="group" aria-label="Category">
-          {(['', ...CATEGORIES] as const).map((c) => (
-            <button key={c || 'all'} onClick={() => { setCat(c); setGroup(''); }}
-              className={cx('shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition', cat === c ? 'bg-kbz-navy text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-kbz-navy')}>
-              {c || 'All categories'}
-            </button>
-          ))}
-        </div>
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        <SearchBox value={q} onChange={setQ} placeholder="Search all items" />
+        {showGroups && (
+          <div className="-mx-4 flex w-[calc(100%+2rem)] gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:w-auto sm:flex-wrap sm:px-0" role="group" aria-label="Category">
+            {(['', ...CATEGORIES] as const).map((c) => (
+              <button key={c || 'all'} onClick={() => setCat(c)}
+                className={cx('shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition', cat === c ? 'bg-kbz-navy text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-kbz-navy')}>
+                {c || 'All categories'}
+              </button>
+            ))}
+          </div>
+        )}
         <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={low} onChange={(e) => setLow(e.target.checked)} />Low stock only</label>
         <div className="flex-1" />
         <div className="flex rounded-xl bg-white p-0.5 ring-1 ring-slate-200" role="group" aria-label="View">
@@ -133,56 +151,83 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit }: { month: string; lowOn
         {can('item.manage') && <Button variant="secondary" onClick={() => onEdit()}><Plus className="h-4 w-4" />New item</Button>}
       </div>
 
-      {/* Step 1: main item icon cards */}
-      <div className="relative mb-6">
-        <button onClick={() => railRef.current?.scrollBy({ left: -480, behavior: 'smooth' })} aria-label="Scroll main items left"
-          className="absolute -left-3 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 place-items-center rounded-xl bg-white text-slate-500 shadow-md ring-1 ring-slate-200 hover:text-kbz-navy sm:grid"><ChevronLeft className="h-5 w-5" /></button>
-        <div ref={railRef} className="-mx-1 flex snap-x gap-3 overflow-x-auto scroll-smooth px-1 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="listbox" aria-label="Main item">
-          <GroupCard label="All items" count={inCat.length} active={!group} onClick={() => setGroup('')} Icon={LayoutGrid} />
-          {groups.map(({ g, count, low: lowN }) => (
-            <GroupCard key={g.id} label={g.label} count={count} low={lowN} active={group === g.id} onClick={() => setGroup(group === g.id ? '' : g.id)} Icon={g.icon} />
-          ))}
-        </div>
-        <button onClick={() => railRef.current?.scrollBy({ left: 480, behavior: 'smooth' })} aria-label="Scroll main items right"
-          className="absolute -right-3 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 place-items-center rounded-xl bg-white text-slate-500 shadow-md ring-1 ring-slate-200 hover:text-kbz-navy sm:grid"><ChevronRight className="h-5 w-5" /></button>
-      </div>
-
-      {/* Step 2: item cards */}
-      <div className="mb-3 flex items-baseline justify-between gap-2">
-        <h3 className="text-base font-bold text-kbz-dark">{chosen ? chosen.label : cat || 'All items'} <span className="text-sm font-normal text-slate-500">· {rows.length} item{rows.length === 1 ? '' : 's'}</span></h3>
-        <span className="text-xs text-slate-500">Value{month ? ` at end of ${monthLabel(month)}` : ''}: <b className="text-kbz-dark">{mmk(rows.reduce((t, i) => t + qtyOf(i) * i.unit_cost, 0))}</b></span>
-      </div>
-      {view === 'table' ? <ItemsTable rows={rows} month={month} moves={moves} onEdit={onEdit} /> : rows.length === 0 ? <Empty>No items match.</Empty> : (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5 2xl:grid-cols-6">
-          {rows.map((i) => <ProductCard key={i.id} item={i} qty={qtyOf(i)} onEdit={can('item.manage') ? () => onEdit(i) : undefined} />)}
-        </div>
+      {showGroups ? (
+        /* Step 1: main item icon cards only */
+        <>
+          <h3 className="mb-3 text-base font-bold text-kbz-dark">Choose a main item <span className="text-sm font-normal text-slate-500">· {groups.length} groups</span></h3>
+          {groups.length === 0 ? <Empty>No items match.</Empty> : (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6" role="list" aria-label="Main items">
+              {groups.map(({ g, count, low: lowN }) => (
+                <GroupCard key={g.id} label={g.label} count={count} low={lowN} onClick={() => setGroup(g.id)} Icon={g.icon} />
+              ))}
+              <GroupCard label="All items" count={inCat.length} onClick={() => setGroup('all')} Icon={LayoutGrid} muted />
+            </div>
+          )}
+        </>
+      ) : (
+        /* Step 2: inside a main item (or search results / table) */
+        <>
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            {group && !searching && (
+              <button onClick={() => setGroup('')} className="inline-flex items-center gap-1.5 rounded-full bg-white px-3.5 py-2 text-xs font-semibold text-kbz-navy shadow-sm ring-1 ring-slate-200 hover:ring-kbz-navy">
+                <ArrowLeft className="h-4 w-4" />All main items
+              </button>
+            )}
+            {chosen && !searching && (
+              <span className="grid h-11 w-11 place-items-center rounded-full bg-kbz-navy text-white"><chosen.icon className="h-6 w-6" strokeWidth={1.5} /></span>
+            )}
+            <h3 className="text-lg font-bold text-kbz-dark">
+              {searching ? `Results for “${q.trim()}”` : chosen ? chosen.label : group === 'all' ? 'All items' : cat || 'All items'}
+              <span className="ml-1 text-sm font-normal text-slate-500">· {rows.length} item{rows.length === 1 ? '' : 's'}</span>
+            </h3>
+            <span className="ml-auto text-xs text-slate-500">Value{month ? ` at end of ${monthLabel(month)}` : ''}: <b className="text-kbz-dark">{mmk(rows.reduce((t, i) => t + qtyOf(i) * i.unit_cost, 0))}</b></span>
+          </div>
+          {view === 'table' ? <ItemsTable rows={rows} month={month} moves={moves} onEdit={onEdit} /> : rows.length === 0 ? <Empty>No items match.</Empty> : (
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {rows.map((i) => <ProductCard key={i.id} item={i} qty={qtyOf(i)} showGroup={searching || group === 'all'} onEdit={can('item.manage') ? () => onEdit(i) : undefined} />)}
+            </div>
+          )}
+        </>
       )}
     </>
   );
 }
 
-function GroupCard({ label, count, low, active, onClick, Icon }: { label: string; count: number; low?: number; active: boolean; onClick: () => void; Icon: LucideIcon }) {
+function GroupCard({ label, count, low, onClick, Icon, muted }: { label: string; count: number; low?: number; onClick: () => void; Icon: LucideIcon; muted?: boolean }) {
   return (
-    <button onClick={onClick} role="option" aria-selected={active} aria-label={`${label}, ${count} item${count === 1 ? '' : 's'}${low ? `, ${low} low stock` : ''}`}
-      className={cx('group relative flex w-[7.75rem] shrink-0 snap-start flex-col items-center gap-2 rounded-3xl px-2 py-4 text-center transition',
-        active ? 'bg-kbz-navy text-white shadow-[0_12px_28px_-14px_rgba(0,45,114,0.8)]' : 'bg-white text-kbz-dark shadow-[0_6px_20px_-12px_rgba(15,23,42,0.25)] hover:-translate-y-0.5')}>
-      {!!low && <span className="absolute right-2 top-2 rounded-full bg-kbz-red px-1.5 text-[10px] font-bold text-white">{low}</span>}
-      <span className={cx('grid h-14 w-14 place-items-center rounded-full', active ? 'bg-white text-kbz-navy' : 'bg-slate-50 text-kbz-dark ring-1 ring-slate-100')}>
-        <Icon className="h-7 w-7" strokeWidth={1.5} />
+    <button onClick={onClick} role="listitem" aria-label={`${label}, ${count} item${count === 1 ? '' : 's'}${low ? `, ${low} low stock` : ''}`}
+      className={cx('group relative flex flex-col items-center gap-3 rounded-3xl px-3 py-6 text-center shadow-[0_8px_24px_-14px_rgba(15,23,42,0.3)] transition hover:-translate-y-0.5 hover:bg-kbz-navy hover:text-white hover:shadow-[0_14px_30px_-14px_rgba(0,45,114,0.8)]',
+        muted ? 'bg-slate-100 text-slate-600' : 'bg-white text-kbz-dark')}>
+      {!!low && <span className="absolute right-3 top-3 rounded-full bg-kbz-red px-2 py-0.5 text-[10px] font-bold text-white">{low} low</span>}
+      <span className="grid h-20 w-20 place-items-center rounded-full bg-slate-50 ring-1 ring-slate-100 transition group-hover:bg-white group-hover:text-kbz-navy">
+        <Icon className="h-9 w-9" strokeWidth={1.4} />
       </span>
-      <span className="text-xs font-semibold leading-tight">{label}</span>
-      <span className={cx('text-[10px]', active ? 'text-white/70' : 'text-slate-400')}>{count} item{count === 1 ? '' : 's'}</span>
+      <span className="text-sm font-semibold leading-tight">{label}</span>
+      <span className="-mt-2 text-[11px] text-slate-400 transition group-hover:text-white/70">{count} item{count === 1 ? '' : 's'}</span>
     </button>
   );
 }
 
-function ProductCard({ item: i, qty, onEdit }: { item: Item; qty: number; onEdit?: () => void }) {
-  const { can } = useData();
+function ProductCard({ item: i, qty, onEdit, showGroup }: { item: Item; qty: number; onEdit?: () => void; showGroup?: boolean }) {
+  const { can, actions } = useData();
+  const toast = useToast();
   const nav = useNavigate();
   const g = groupOf(i);
   const out = qty <= 0;
   const isLow = !out && qty <= i.min_level;
   const { url } = useFileUrl(i.photo);
+  const [uploading, setUploading] = useState(false);
+  const canPhoto = can('item.manage');
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      await actions.saveItem({ id: i.id, name: i.name, category: i.category, classification: i.classification, unit: i.unit, unit_cost: i.unit_cost,
+        min_level: i.min_level, active: i.active, item_group: i.item_group }, file);
+      toast(`Photo saved for ${i.name}`);
+    } catch (e) { toast((e as Error).message, 'error'); } finally { setUploading(false); }
+  };
+  const photoInput = canPhoto && <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={uploading} onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ''; }} />;
   return (
     <div className={cx('group relative flex flex-col rounded-2xl bg-white p-3 shadow-[0_6px_22px_-12px_rgba(15,23,42,0.3)] transition hover:shadow-[0_14px_30px_-14px_rgba(15,23,42,0.35)]', !i.active && 'opacity-60')}>
       {(out || isLow || !i.active) && (
@@ -196,11 +241,25 @@ function ProductCard({ item: i, qty, onEdit }: { item: Item; qty: number; onEdit
           <Pencil className="h-3.5 w-3.5" />
         </button>
       )}
-      <div className="grid h-36 place-items-center overflow-hidden rounded-xl bg-white">
-        {url ? <img src={url} alt={i.name} className="h-36 w-full object-contain" loading="lazy" />
-          : <span className="grid h-24 w-24 place-items-center rounded-full bg-navy-50 text-kbz-navy"><g.icon className="h-12 w-12" strokeWidth={1.25} /></span>}
+      <div className="relative h-40 overflow-hidden rounded-xl bg-white">
+        {url ? (
+          <img src={url} alt={i.name} className="h-40 w-full object-contain" loading="lazy" />
+        ) : canPhoto ? (
+          <label className={cx('flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 transition hover:border-kbz-navy hover:text-kbz-navy', uploading && 'animate-pulse')}>
+            <Camera className="h-7 w-7" strokeWidth={1.5} />
+            <span className="text-xs font-semibold">{uploading ? 'Uploading…' : 'Add photo'}</span>
+            {photoInput}
+          </label>
+        ) : (
+          <span className="flex h-40 items-center justify-center"><span className="grid h-24 w-24 place-items-center rounded-full bg-navy-50 text-kbz-navy"><g.icon className="h-12 w-12" strokeWidth={1.25} /></span></span>
+        )}
+        {url && canPhoto && (
+          <label className="absolute bottom-1 right-1 grid h-7 w-7 cursor-pointer place-items-center rounded-full bg-white/90 text-slate-500 opacity-0 shadow ring-1 ring-slate-200 transition hover:text-kbz-navy group-hover:opacity-100 focus-within:opacity-100" title="Change photo" aria-label={`Change photo of ${i.name}`}>
+            <Camera className="h-3.5 w-3.5" />{photoInput}
+          </label>
+        )}
       </div>
-      <div className="mt-3 text-[11px] text-slate-400">{g.label} · {i.unit}</div>
+      <div className="mt-3 text-[11px] text-slate-400">{showGroup ? `${g.label} · ` : ''}{i.unit}</div>
       <div className="mt-0.5 line-clamp-2 min-h-[2.5rem] text-sm font-semibold leading-snug text-kbz-dark">{i.name}</div>
       <div className="mt-2 flex items-end justify-between gap-2">
         <div className="min-w-0">
