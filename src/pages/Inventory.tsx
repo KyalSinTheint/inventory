@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowDownToLine, CalendarDays, Camera, ChevronLeft, ChevronRight, Pencil, Plus, RotateCcw, SlidersHorizontal, ClipboardCheck, Trash2 } from 'lucide-react';
+import { ArrowDownToLine, Camera, Pencil, Plus, RotateCcw, SlidersHorizontal, ClipboardCheck, Trash2 } from 'lucide-react';
 import { stockMovement } from './reportSpecs';
+import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { FileLink, FilePicker, Thumb } from '../components/files';
 import { DOC_ACCEPT } from '../lib/files';
 import { useData } from '../lib/store';
 import { CATEGORIES, CLASSIFICATIONS, TXN_LABELS, type Category, type CountLine, type Item, type ReturnCondition } from '../lib/types';
-import { date, dateTime, mmk, num, thisMonth } from '../lib/format';
+import { date, dateTime, mmk, monthEnd, monthLabel, num, thisMonth } from '../lib/format';
 import { Badge, Button, Empty, ErrorNote, Field, Modal, PageHeader, SearchBox, StatusBadge, Tabs, useSubmit, useToast } from '../components/ui';
 
 type Tab = 'items' | 'txns' | 'count';
@@ -15,7 +16,8 @@ export default function InventoryPage() {
   const { can } = useData();
   const [params] = useSearchParams();
   const [tab, setTab] = useState<Tab>('items');
-  const [month, setMonth] = useState(params.get('month') ?? '');
+  const [month, setMonth] = useMonthParam();
+  const { data } = useData();
   const [modal, setModal] = useState<null | 'in' | 'return' | 'adjust' | { item?: Item }>(() => (params.get('stockin') === '1' && can('stock.create') ? 'in' : null));
   return (
     <>
@@ -25,7 +27,9 @@ export default function InventoryPage() {
           <Button variant="secondary" onClick={() => setModal('return')}><RotateCcw className="h-4 w-4" />Return</Button>
           <Button variant="secondary" onClick={() => setModal('adjust')}><SlidersHorizontal className="h-4 w-4" />Adjust / write-off</Button>
         </>} />
-      <MonthBar month={month} onChange={setMonth} />
+      <MonthBar month={month} onChange={setMonth} allLabel="All months (current balance)"
+        dates={[...data.stock_txns.map((t) => t.decided_at ?? t.created_at), ...data.physical_counts.map((c) => `${c.month}-01`)]}
+        note={month ? `Balances as at ${date(monthEnd(month))}; movements in ${monthLabel(month)}` : 'Current balances and all transactions'} />
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'items', label: 'Stock on hand' }, { id: 'txns', label: 'Transactions' }, { id: 'count', label: 'Physical count' }]} />
       {tab === 'items' && <ItemsTab month={month} lowOnly={params.get('low') === '1'} initialCat={params.get('cat') ?? ''} onEdit={(item) => setModal({ item })} />}
       {tab === 'txns' && <TxnsTab month={month} />}
@@ -38,38 +42,7 @@ export default function InventoryPage() {
   );
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const monthLabel = (ym: string) => `${MONTHS[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
-const monthEnd = (ym: string) => new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).toISOString().slice(0, 10);
 const txnMonth = (t: { decided_at: string | null; created_at: string }) => (t.decided_at ?? t.created_at).slice(0, 7);
-
-/** One month picker for every Inventory tab. Empty = all months (current balances). */
-function MonthBar({ month, onChange }: { month: string; onChange: (m: string) => void }) {
-  const { data } = useData();
-  const months = useMemo(() => {
-    const set = new Set<string>([thisMonth()]);
-    for (const t of data.stock_txns) set.add(txnMonth(t));
-    for (const c of data.physical_counts) set.add(c.month);
-    return [...set].sort().reverse();
-  }, [data.stock_txns, data.physical_counts]);
-  const i = months.indexOf(month);
-  return (
-    <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-2xs">
-      <CalendarDays className="h-4 w-4 text-kbz-navy" />
-      <span className="text-sm font-semibold text-kbz-dark">View month</span>
-      <button className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30" aria-label="Previous month" disabled={!month || i === months.length - 1}
-        onClick={() => onChange(months[i + 1])}><ChevronLeft className="h-4 w-4" /></button>
-      <select className="input w-auto" value={month} onChange={(e) => onChange(e.target.value)} aria-label="Month">
-        <option value="">All months (current balance)</option>
-        {months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
-      </select>
-      <button className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30" aria-label="Next month" disabled={!month || i <= 0}
-        onClick={() => onChange(months[i - 1])}><ChevronRight className="h-4 w-4" /></button>
-      {month && <Button size="sm" variant="ghost" onClick={() => onChange('')}>Show all</Button>}
-      <span className="ml-auto text-xs text-slate-500">{month ? `Balances as at ${date(monthEnd(month))}; movements in ${monthLabel(month)}` : 'Showing current balances and all transactions'}</span>
-    </div>
-  );
-}
 
 function ItemsTab({ month, lowOnly, initialCat, onEdit }: { month: string; lowOnly: boolean; initialCat: string; onEdit: (i?: Item) => void }) {
   const { data, can } = useData();
@@ -215,7 +188,7 @@ function StockInModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal wide open onClose={onClose} title="Stock in (purchase)" footer={<>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
-      <Button busy={busy} onClick={() => run(async () => { const t = await actions.stockIn({ ...f, qty, unit_cost: Number(f.unit_cost || it?.unit_cost || 0) }, invoice[0] ?? null); toast(`${t.ref} sent to HOD for approval`); onClose(); })}>Submit for approval</Button>
+      <Button busy={busy} onClick={() => run(async () => { await actions.stockIn({ ...f, qty, unit_cost: Number(f.unit_cost || it?.unit_cost || 0) }, invoice[0] ?? null); toast('Stock in sent to HOD for approval'); onClose(); })}>Submit for approval</Button>
     </>}>
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Item" required className="sm:col-span-3"><div className="flex items-center gap-2"><Thumb att={it?.photo} alt={it?.name ?? ''} size={38} /><div className="flex-1"><ItemPicker value={f.item_id} onChange={pickItem} /></div></div></Field>
@@ -240,12 +213,12 @@ function ReturnModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal open onClose={onClose} title="Return after training" footer={<>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
-      <Button busy={busy} onClick={() => run(async () => { const t = await actions.stockReturn({ ...f, qty: Number(f.qty) }); toast(`${t.ref} recorded`); onClose(); })}>Record return</Button>
+      <Button busy={busy} onClick={() => run(async () => { await actions.stockReturn({ ...f, qty: Number(f.qty) }); toast('Return recorded'); onClose(); })}>Record return</Button>
     </>}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Training batch" required className="sm:col-span-2">
           <select className="input" value={f.batch_id} onChange={(e) => setF({ ...f, batch_id: e.target.value, item_id: '' })}>
-            <option value="">Choose batch…</option>{data.batches.map((b) => <option key={b.id} value={b.id}>{b.code} · {b.name}</option>)}
+            <option value="">Choose training…</option>{data.batches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </Field>
         <Field label="Item issued to this batch" required className="sm:col-span-2"><ItemPicker value={f.item_id} onChange={(v) => setF({ ...f, item_id: v })} filter={(i) => issuedItems.has(i.id)} /></Field>
@@ -271,7 +244,7 @@ function AdjustModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal open onClose={onClose} title="Stock adjustment / write-off" footer={<>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
-      <Button busy={busy} onClick={() => run(async () => { const t = await actions.stockAdjust({ ...f, qty: Number(f.qty) }); toast(`${t.ref} sent to HOD for approval`); onClose(); })}>Submit for approval</Button>
+      <Button busy={busy} onClick={() => run(async () => { await actions.stockAdjust({ ...f, qty: Number(f.qty) }); toast('Adjustment sent to HOD for approval'); onClose(); })}>Submit for approval</Button>
     </>}>
       <div className="grid gap-3">
         <Field label="Item" required><ItemPicker value={f.item_id} onChange={(v) => setF({ ...f, item_id: v })} /></Field>
@@ -368,7 +341,7 @@ function CountTab({ month: viewMonth }: { month: string }) {
             <Button busy={busy} disabled={!entered.length} onClick={() => run(async () => {
               const lines: CountLine[] = entered.map((i) => ({ item_id: i.id, system_qty: i.qty_on_hand, counted_qty: Number(counted[i.id]) }));
               const r = await actions.submitCount({ month, lines, note: note || cat });
-              toast(`${r.count.ref} saved · ${r.adjustments} adjustment(s) sent for HOD approval`);
+              toast(`Count saved · ${r.adjustments} adjustment(s) sent for HOD approval`);
               setCounted({}); setNote('');
             })}><ClipboardCheck className="h-4 w-4" />Submit count ({entered.length} items, {variances} variances)</Button>
           </div>
@@ -379,12 +352,12 @@ function CountTab({ month: viewMonth }: { month: string }) {
         <h3 className="mb-2 text-sm font-semibold text-navy-900">Count history (reconciliation)</h3>
         <div className="table-wrap">
           <table className="tbl">
-            <thead><tr><th>Ref</th><th>Month</th><th>Counted by</th><th className="num">Items</th><th className="num">Variances</th><th className="num">Net variance value</th><th>Note</th></tr></thead>
+            <thead><tr><th>Month</th><th>Counted by</th><th className="num">Items</th><th className="num">Variances</th><th className="num">Net variance value</th></tr></thead>
             <tbody>
               {[...data.physical_counts].filter((c) => !viewMonth || c.month === viewMonth).reverse().map((c) => {
                 const v = c.lines.filter((l) => l.counted_qty !== l.system_qty);
                 const val = v.reduce((s, l) => s + (l.counted_qty - l.system_qty) * (data.items.find((i) => i.id === l.item_id)?.unit_cost ?? 0), 0);
-                return <tr key={c.id}><td className="font-medium text-navy-800">{c.ref}</td><td className="whitespace-nowrap">{monthLabel(c.month)}</td><td>{name(c.created_by)} <div className="text-xs text-slate-500">{dateTime(c.created_at)}</div></td><td className="num">{c.lines.length}</td><td className="num">{v.length}</td><td className="num">{mmk(val)}</td><td className="text-xs">{c.note}</td></tr>;
+                return <tr key={c.id}><td className="whitespace-nowrap font-medium text-navy-800">{monthLabel(c.month)}</td><td>{name(c.created_by)} <div className="text-xs text-slate-500">{dateTime(c.created_at)}</div></td><td className="num">{c.lines.length}</td><td className="num">{v.length}</td><td className="num">{mmk(val)}</td></tr>;
               })}
             </tbody>
           </table>

@@ -4,7 +4,8 @@ import { CheckCircle2, XCircle } from 'lucide-react';
 import { useData } from '../lib/store';
 import { TXN_LABELS } from '../lib/types';
 import { requestValue, txnValue } from '../lib/logic';
-import { dateTime, mmk, num } from '../lib/format';
+import { date, mmk, monthLabel, num } from '../lib/format';
+import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { Badge, Button, Card, Empty, ErrorNote, Field, Modal, PageHeader, StatusBadge, useSubmit, useToast } from '../components/ui';
 import { DepositActions } from '../components/DepositActions';
 import { FileLink } from '../components/files';
@@ -13,11 +14,13 @@ export default function ApprovalsPage() {
   const { data, user, name, actions } = useData();
   const isHod = user.role === 'hod';
   const notMine = (by: string | null) => by !== user.id;
-  const depositsQ = data.deposits.filter((d) => isHod
+  const [month, setMonth] = useMonthParam();
+  const inMonth = (iso: string | null | undefined) => !month || (iso ?? '').startsWith(month);
+  const depositsQ = data.deposits.filter((d) => inMonth(d.requested_at ?? d.created_at)).filter((d) => isHod
     ? ((d.status === 'Refund Request' && !d.hod_approved_by) || d.status === 'Forfeiture Request' || d.status === 'Reversal Request') && notMine(d.requested_by)
     : d.status === 'Refund Request' && !!d.hod_approved_by);
-  const requests = isHod ? data.material_requests.filter((r) => r.status === 'Pending' && notMine(r.created_by)) : [];
-  const txns = isHod ? data.stock_txns.filter((t) => t.status === 'Pending' && notMine(t.created_by)) : [];
+  const requests = isHod ? data.material_requests.filter((r) => r.status === 'Pending' && notMine(r.created_by) && inMonth(r.created_at)) : [];
+  const txns = isHod ? data.stock_txns.filter((t) => t.status === 'Pending' && notMine(t.created_by) && inMonth(t.created_at)) : [];
   const ownPending = isHod ? data.stock_txns.filter((t) => t.status === 'Pending' && !notMine(t.created_by)).length + data.material_requests.filter((r) => r.status === 'Pending' && !notMine(r.created_by)).length : 0;
   const batch = (id: string | null) => data.batches.find((b) => b.id === id);
   const item = (id: string) => data.items.find((i) => i.id === id);
@@ -25,6 +28,8 @@ export default function ApprovalsPage() {
   return (
     <>
       <PageHeader title="Approvals" subtitle={isHod ? 'Requests waiting for the L&D HOD' : 'Refunds approved by the HOD, waiting for Finance to confirm payment'} />
+      <MonthBar month={month} onChange={setMonth} note={month ? `Requests submitted in ${monthLabel(month)}` : 'All waiting requests'}
+        dates={[...data.deposits.filter((d) => d.requested_at).map((d) => d.requested_at), ...data.material_requests.filter((r) => r.status === 'Pending').map((r) => r.created_at), ...data.stock_txns.filter((t) => t.status === 'Pending').map((t) => t.created_at)]} />
       {ownPending > 0 && <p className="mb-4 text-sm text-slate-500">{ownPending} pending item(s) you created yourself are hidden: another approver must decide them.</p>}
       <div className="space-y-6">
         <Card title={<>License deposits <Badge tone="amber">{depositsQ.length}</Badge></>} padded={false}>
@@ -33,9 +38,9 @@ export default function ApprovalsPage() {
               {depositsQ.map((d) => (
                 <li key={d.id} className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center">
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2"><Link to={`/deposits/${d.id}`} className="font-medium text-navy-800 hover:underline">{d.ref}</Link><StatusBadge status={d.status} />{d.forfeit_reason && <Badge>{d.forfeit_reason}</Badge>}</div>
-                    <div className="text-sm">{d.trainee_name} · NRC {d.nrc} · {d.trainee_type} · <b>{mmk(d.amount)}</b> · {batch(d.batch_id)?.code}</div>
-                    <div className="text-xs text-slate-500">Requested by {name(d.requested_by)} · {dateTime(d.requested_at)}{d.hod_approved_by && ` · HOD approved by ${name(d.hod_approved_by)}`}</div>
+                    <div className="flex flex-wrap items-center gap-2"><Link to={`/deposits/${d.id}`} className="font-medium text-navy-800 hover:underline">{d.trainee_name}</Link><StatusBadge status={d.status} />{d.forfeit_reason && <Badge>{d.forfeit_reason}</Badge>}</div>
+                    <div className="text-sm">NRC {d.nrc} · {d.trainee_type} · <b>{mmk(d.amount)}</b> · {batch(d.batch_id)?.name}</div>
+                    <div className="text-xs text-slate-500">Requested by {name(d.requested_by)} · {date(d.requested_at)}{d.hod_approved_by && ` · HOD approved by ${name(d.hod_approved_by)}`}</div>
                     {(d.request_note || d.reversal_reason) && <div className="mt-1 text-xs text-slate-600">{d.status === 'Reversal Request' ? `Reversal reason: ${d.reversal_reason}` : d.request_note}</div>}
                     {d.attachment && <div className="mt-1 text-xs"><FileLink att={d.attachment} /></div>}
                   </div>
@@ -55,8 +60,8 @@ export default function ApprovalsPage() {
                   return (
                     <li key={r.id} className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-start">
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium text-navy-800">{r.ref} · {batch(r.batch_id)?.code} <span className="font-normal text-slate-500">({mmk(requestValue(r, data.items))})</span></div>
-                        <div className="text-xs text-slate-500">By {name(r.created_by)} · {dateTime(r.created_at)}</div>
+                        <div className="font-medium text-navy-800">{batch(r.batch_id)?.name} <span className="font-normal text-slate-500">({mmk(requestValue(r, data.items))})</span></div>
+                        <div className="text-xs text-slate-500">By {name(r.created_by)} · {date(r.created_at)}</div>
                         {r.purpose && <div className="mt-1 text-sm">{r.purpose}</div>}
                         {r.remarks && <div className="mt-1 whitespace-pre-line text-xs text-slate-600">{r.remarks}</div>}
                         {r.attachment && <div className="mt-1 text-xs"><FileLink att={r.attachment} /></div>}
@@ -83,10 +88,9 @@ export default function ApprovalsPage() {
                   return (
                     <li key={t.id} className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center">
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium text-navy-800">{t.ref} · {TXN_LABELS[t.type]}</div>
-                        <div className="text-sm">{it?.name}: <b>{t.qty > 0 ? '+' : ''}{num(t.qty)}</b> {it?.unit} (on hand {num(it?.qty_on_hand ?? 0)}) · {mmk(txnValue(t))}</div>
-                        <div className="text-xs text-slate-500">{[t.supplier, t.invoice_no, t.reason].filter(Boolean).join(' · ')} · by {name(t.created_by)} {dateTime(t.created_at)}</div>
-                        {t.type === 'IN' && <div className="text-xs">{num(t.qty)} × {num(t.unit_cost)} = <b>{mmk(txnValue(t))}</b></div>}
+                        <div className="font-medium text-navy-800">{TXN_LABELS[t.type]} · {it?.name}</div>
+                        <div className="text-sm"><b>{t.qty > 0 ? '+' : ''}{num(t.qty)}</b> {it?.unit} × {num(t.unit_cost)} = <b>{mmk(txnValue(t))}</b> <span className="text-slate-500">(on hand {num(it?.qty_on_hand ?? 0)})</span></div>
+                        <div className="text-xs text-slate-500">By {name(t.created_by)} · {date(t.created_at)}</div>
                         {t.attachment ? <div className="mt-0.5 text-xs"><FileLink att={t.attachment} /></div> : t.type === 'IN' && <div className="mt-0.5 text-xs text-amber-700">No invoice attached</div>}
                       </div>
                       <Decide label="transaction" onDecide={(ok, note) => actions.decideTxn(t.id, ok, note)} />

@@ -95,10 +95,10 @@ function ActionModal({ kind, deposit: d, onClose, run }: {
     <Modal open onClose={onClose} title={m.title} footer={<>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
       <Button variant={kind.startsWith('reject') ? 'danger' : 'primary'} busy={busy}
-        onClick={() => submit(async () => { await run(d.id, action(), file); toast(`${d.ref}: ${m.button.toLowerCase()} done`); onClose(); })}>{m.button}</Button>
+        onClick={() => submit(async () => { await run(d.id, action(), file); toast(`${d.trainee_name}: ${m.button.toLowerCase()} done`); onClose(); })}>{m.button}</Button>
     </>}>
       <div className="mb-4 rounded-lg bg-silver-100 px-3 py-2 text-sm">
-        <div className="font-medium text-navy-900">{d.ref} · {d.trainee_name} · NRC {d.nrc}</div>
+        <div className="font-medium text-navy-900">{d.trainee_name} · NRC {d.nrc}</div>
         <div className="text-slate-600">{mmk(d.amount)} · paid {d.payment_date}</div>
       </div>
       <p className="mb-4 text-sm text-slate-600">{m.explain}</p>

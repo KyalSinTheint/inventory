@@ -129,22 +129,33 @@ function makeActions(
       await audit('Create', 'item', saved.id, `${saved.name} (${saved.category})`);
       return saved;
     },
-    async saveBatch(input: Omit<Batch, 'id' | 'created_at'> & { id?: string }) {
+    async saveBatch(input: Omit<Batch, 'id' | 'created_at' | 'code'> & { id?: string; code?: string }) {
       need('batch.manage');
-      if (!input.code.trim() || !input.name.trim()) throw new RuleError('Batch code and name are required.');
+      if (!input.name.trim()) throw new RuleError('Training name is required.');
+      // Batch codes are no longer shown or typed: keep the existing one, otherwise assign the next one.
+      const existingBatch = input.id ? get().data.batches.find((b) => b.id === input.id) : undefined;
+      if (!input.code?.trim()) {
+        const pre = ({ License: `LIC-${input.location ?? 'GEN'}`, YCP: 'YCP', 'Product & Soft Skills': 'PSS', Corporate: 'CORP', Agency: 'AGY' } as Record<string, string>)[input.program] ?? 'BAT';
+        const yr = (input.start_date || new Date().toISOString()).slice(0, 4);
+        const head = `${pre}-${yr}-`;
+        const n = 1 + get().data.batches.filter((b) => b.code.startsWith(head)).reduce((m, b) => Math.max(m, parseInt(b.code.slice(head.length), 10) || 0), 0);
+        input = { ...input, code: existingBatch?.code ?? `${head}${String(n).padStart(2, '0')}` };
+      }
+      if (get().data.batches.some((b) => b.name.trim().toLowerCase() === input.name.trim().toLowerCase() && b.id !== input.id)) {
+        throw new RuleError(`A training called "${input.name.trim()}" already exists.`);
+      }
       if (input.end_date && input.start_date && input.end_date < input.start_date) throw new RuleError('End date is before the start date.');
       if (input.budget < 0) throw new RuleError('Budget cannot be negative.');
       if (input.program === 'License' && !input.location) throw new RuleError('Choose the branch (YGN / MDY / TGI) for a License batch.');
-      const dup = get().data.batches.find((b) => b.code.toLowerCase() === input.code.trim().toLowerCase() && b.id !== input.id);
-      if (dup) throw new RuleError(`Batch code ${input.code} already exists.`);
+      const code = input.code!.trim();
       if (input.id) {
         const { id, ...patch } = input;
-        const saved = await update('batches', id, patch);
-        await audit('Update', 'batch', id, `${saved.code} budget ${saved.budget}`);
+        const saved = await update('batches', id, { ...patch, code, name: patch.name.trim() });
+        await audit('Update', 'batch', id, `${saved.name}: budget ${saved.budget}`);
         return saved;
       }
-      const saved = await insert('batches', { ...input, id: uid(), created_at: nowIso() });
-      await audit('Create', 'batch', saved.id, `${saved.code} ${saved.name}`);
+      const saved = await insert('batches', { ...input, code, name: input.name.trim(), id: uid(), created_at: nowIso() });
+      await audit('Create', 'batch', saved.id, saved.name);
       return saved;
     },
 

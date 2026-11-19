@@ -28,7 +28,7 @@ export default function DepositDetail() {
 
   const rows: [string, React.ReactNode][] = [
     ['Trainee', d.trainee_name], ['NRC', d.nrc], ['Trainee type', d.trainee_type], ['Agent code / employee ID', d.agent_code ?? '—'],
-    ['License course batch', batch ? `${batchLabel(batch)} · ${batch.name}` : '—'], ['Training dates', `${date(d.training_date)} – ${date(d.training_end_date)}`],
+    ['Training', batchLabel(batch)], ['Training dates', `${date(d.training_date)} – ${date(d.training_end_date)}`],
     ['Deposit amount', <b key="a">{mmk(d.amount)}</b>], ['Payment date', date(d.payment_date)],
     ['Ledger', ledger], ['Service term ends', <span key="t">{date(r.dueDate)} {d.status === 'Held' && r.level !== 'ok' && <Badge tone={r.level === 'expired' ? 'red' : 'amber'}>{r.level === 'expired' ? 'ended' : `${r.daysLeft} days left`}</Badge>}</span>],
     ['Registered by', `${name(d.created_by)} · ${dateTime(d.created_at)}`],
@@ -43,7 +43,7 @@ export default function DepositDetail() {
   return (
     <>
       <Link to="/deposits" className="mb-3 inline-flex items-center gap-1 text-sm text-navy-700 hover:underline"><ArrowLeft className="h-4 w-4" />All deposits</Link>
-      <PageHeader title={`${d.ref} · ${d.trainee_name}`} subtitle={<span className="inline-flex items-center gap-2"><StatusBadge status={d.status} />{locked && <span className="inline-flex items-center gap-1 text-xs"><Lock className="h-3 w-3" />Approved: read-only, changes need a reversal</span>}</span>}
+      <PageHeader title={d.trainee_name} subtitle={<span className="inline-flex items-center gap-2"><StatusBadge status={d.status} />{locked && <span className="inline-flex items-center gap-1 text-xs"><Lock className="h-3 w-3" />Approved: read-only, changes need a reversal</span>}</span>}
         actions={d.status === 'Held' && can('deposit.create') ? <Button variant="secondary" onClick={() => setEdit(true)}><Pencil className="h-4 w-4" />Correct details</Button> : undefined} />
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -99,7 +99,7 @@ function EditDeposit({ d, onClose }: { d: Deposit; onClose: () => void }) {
   const { busy, error, run } = useSubmit();
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
   return (
-    <Modal open onClose={onClose} title={`Correct ${d.ref}`} footer={<>
+    <Modal open onClose={onClose} title={`Correct: ${d.trainee_name}`} footer={<>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
       <Button busy={busy} onClick={() => run(async () => { await actions.editDeposit(d.id, { ...f, agent_code: f.agent_code || null, training_end_date: f.training_end_date || null, amount: Number(f.amount) }); toast('Deposit corrected; change logged'); onClose(); })}>Save correction</Button>
     </>}>
@@ -125,7 +125,7 @@ function AddDocs({ d, onClose }: { d: Deposit; onClose: () => void }) {
   const [files, setFiles] = useState<File[]>([]);
   const { busy, error, run } = useSubmit();
   return (
-    <Modal open onClose={onClose} title={`Add documents to ${d.ref}`} footer={<>
+    <Modal open onClose={onClose} title={`Add documents: ${d.trainee_name}`} footer={<>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
       <Button busy={busy} disabled={!files.length} onClick={() => run(async () => { await actions.addDepositDocuments(d.id, files); toast(`${files.length} document(s) added`); onClose(); })}>Upload</Button>
     </>}>

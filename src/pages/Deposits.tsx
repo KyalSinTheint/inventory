@@ -4,14 +4,15 @@ import { Download, Layers, List, Plus } from 'lucide-react';
 import { useData } from '../lib/store';
 import { DEPOSIT_STATUSES, LOCATIONS, LOCATION_LABELS, TRAINEE_TYPES, type Batch, type Deposit, type Location, type TraineeType } from '../lib/types';
 import { depositTotals, normalizeNrc, OPEN_STATUSES, retention } from '../lib/logic';
-import { date, mmk, today } from '../lib/format';
+import { date, mmk, monthLabel, today } from '../lib/format';
 import { DOC_ACCEPT } from '../lib/files';
 import { Badge, Button, Empty, ErrorNote, Field, Modal, PageHeader, SearchBox, StatusBadge, cx, useSubmit, useToast } from '../components/ui';
 import { FilePicker } from '../components/files';
 import { exportExcel, exportPdf } from '../lib/export';
+import { MonthBar } from '../components/MonthBar';
 import { depositMasterReport } from './reportSpecs';
 
-export const batchLabel = (b: Batch | undefined) => (b ? `${b.code}${b.location ? ` · ${b.location}` : ''}` : '—');
+export const batchLabel = (b: Batch | undefined) => (b ? b.name : '—');
 
 export default function DepositsPage() {
   const { data, can, settings, user } = useData();
@@ -23,6 +24,7 @@ export default function DepositsPage() {
   const batch = params.get('batch') ?? '';
   const type = params.get('type') ?? '';
   const view = params.get('view') === 'batch' ? 'batch' : 'list';
+  const month = params.get('month') ?? '';
   const setParam = (k: string, v: string) => { const p = new URLSearchParams(params); if (v) p.set(k, v); else p.delete(k); setParams(p, { replace: true }); };
   const batchOf = (id: string) => data.batches.find((b) => b.id === id);
   const licenseBatches = data.batches.filter((b) => b.program === 'License');
@@ -32,11 +34,12 @@ export default function DepositsPage() {
     const sn = normalizeNrc(q);
     return data.deposits
       .filter((d) => !status || (status === 'open' ? OPEN_STATUSES.includes(d.status) || d.status === 'Reversal Request' : d.status === status))
+      .filter((d) => !month || d.payment_date.startsWith(month))
       .filter((d) => !batch || d.batch_id === batch)
       .filter((d) => !type || d.trainee_type === type)
-      .filter((d) => !s || [d.ref, d.trainee_name, d.agent_code ?? ''].some((v) => v.toLowerCase().includes(s)) || (sn.length > 1 && normalizeNrc(d.nrc).includes(sn)))
-      .sort((a, b) => b.ref.localeCompare(a.ref));
-  }, [data.deposits, q, status, batch, type]);
+      .filter((d) => !s || [d.trainee_name, d.agent_code ?? ''].some((v) => v.toLowerCase().includes(s)) || (sn.length > 1 && normalizeNrc(d.nrc).includes(sn)))
+      .sort((a, b) => b.payment_date.localeCompare(a.payment_date) || b.created_at.localeCompare(a.created_at));
+  }, [data.deposits, q, status, batch, type, month]);
   const t = depositTotals(rows);
 
   const doExport = async (kind: 'xlsx' | 'pdf') => {
@@ -52,8 +55,10 @@ export default function DepositsPage() {
           {can('deposit.create') && <Button onClick={() => setShowNew(true)}><Plus className="h-4 w-4" />Register deposit</Button>}
         </>} />
 
+      <MonthBar month={month} onChange={(m) => setParam('month', m)} dates={data.deposits.map((d) => d.payment_date)}
+        note={month ? `Deposits paid in ${monthLabel(month)}` : 'All deposits'} />
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <SearchBox value={q} onChange={setQ} placeholder="Search name, NRC, agent code, ref" />
+        <SearchBox value={q} onChange={setQ} placeholder="Search name, NRC, agent code" />
         <select className="input w-auto" value={status} onChange={(e) => setParam('status', e.target.value)} aria-label="Status filter">
           <option value="">All statuses</option>
           <option value="open">Open (held + pending)</option>
@@ -82,7 +87,7 @@ export default function DepositsPage() {
       {view === 'batch' ? <ByBatch rows={rows} onPick={(id) => { const p = new URLSearchParams(params); p.set('batch', id); p.delete('view'); setParams(p, { replace: true }); }} /> : (
         <div className="table-wrap">
           <table className="tbl">
-            <thead><tr><th>Deposit ID</th><th>Trainee</th><th>NRC</th><th>Batch</th><th>Training</th><th className="num">Amount</th><th>Status</th><th>Retention</th></tr></thead>
+            <thead><tr><th>Trainee</th><th>NRC</th><th>Training</th><th>Training dates</th><th className="num">Amount</th><th>Status</th><th>Retention</th></tr></thead>
             <tbody>
               {rows.map((d) => <Row key={d.id} d={d} batch={batchLabel(batchOf(d.batch_id))} onOpen={() => nav(`/deposits/${d.id}`)} alert={retention(d, settings.retention_alert_months, settings.service_term_months, today())} />)}
             </tbody>
@@ -105,14 +110,14 @@ function ByBatch({ rows, onPick }: { rows: Deposit[]; onPick: (batchId: string) 
   return (
     <div className="table-wrap">
       <table className="tbl">
-        <thead><tr><th>Batch</th><th>Branch</th><th>Training dates</th><th className="num">Trainees</th><th className="num">Internal / External</th><th className="num">Held</th><th className="num">Refunded</th><th className="num">Forfeited</th></tr></thead>
+        <thead><tr><th>Training</th><th>Branch</th><th>Training dates</th><th className="num">Trainees</th><th className="num">Internal / External</th><th className="num">Held</th><th className="num">Refunded</th><th className="num">Forfeited</th></tr></thead>
         <tbody>
           {groups.map(({ b, list }) => {
             const t = depositTotals(list);
             const internal = list.filter((d) => d.trainee_type === 'Internal').length;
             return (
               <tr key={b.id} className="cursor-pointer" onClick={() => onPick(b.id)}>
-                <td><div className="font-medium text-navy-800">{b.code}</div><div className="text-xs text-slate-500">{b.name}</div></td>
+                <td className="font-medium text-navy-800">{b.name}</td>
                 <td>{b.location ? LOCATION_LABELS[b.location] : '—'}</td>
                 <td className="whitespace-nowrap text-xs">{date(b.start_date)} – {date(b.end_date)}</td>
                 <td className="num">{list.length}</td>
@@ -132,8 +137,7 @@ function ByBatch({ rows, onPick }: { rows: Deposit[]; onPick: (batchId: string) 
 function Row({ d, batch, onOpen, alert }: { d: Deposit; batch: string; onOpen: () => void; alert: ReturnType<typeof retention> }) {
   return (
     <tr className="cursor-pointer" onClick={onOpen}>
-      <td className="whitespace-nowrap font-medium text-navy-800">{d.ref}</td>
-      <td><div className="font-medium">{d.trainee_name}</div><div className="flex flex-wrap items-center gap-1 text-xs text-slate-500"><Badge tone={d.trainee_type === 'External' ? 'purple' : 'navy'}>{d.trainee_type}</Badge>{d.agent_code}</div></td>
+      <td><div className="font-medium text-navy-800">{d.trainee_name}</div><div className="flex flex-wrap items-center gap-1 text-xs text-slate-500"><Badge tone={d.trainee_type === 'External' ? 'purple' : 'navy'}>{d.trainee_type}</Badge>{d.agent_code}</div></td>
       <td className="whitespace-nowrap text-sm">{d.nrc}</td>
       <td className="whitespace-nowrap">{batch}</td>
       <td className="whitespace-nowrap text-sm">{date(d.training_date)}{d.training_end_date && d.training_end_date !== d.training_date && <div className="text-xs text-slate-500">to {date(d.training_end_date)}</div>}</td>
@@ -168,7 +172,7 @@ function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (i
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
       <Button busy={busy} onClick={() => run(async () => {
         const d = await actions.registerDeposit({ ...f, agent_code: f.agent_code || null, amount: Number(f.amount) }, files);
-        toast(`${d.ref} registered as Held`);
+        toast('Deposit registered as Held');
         onCreated(d.id);
       })}>Register as Held</Button>
     </>}>
@@ -188,7 +192,7 @@ function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (i
         <Field label="License course batch" required hint={batches.length ? undefined : 'Create an active License batch first.'}>
           <div className="flex gap-2">
             <select className="input" value={f.batch_id} onChange={(e) => pickBatch(e.target.value)}>
-              {batches.map((b) => <option key={b.id} value={b.id}>{batchLabel(b)} · {b.name}</option>)}
+              {batches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
             {can('batch.manage') && <Button variant="secondary" type="button" onClick={() => setNewBatch(true)} aria-label="New batch" title="New batch"><Plus className="h-4 w-4" /></Button>}
           </div>
@@ -211,7 +215,7 @@ function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (i
 
 function QuickBatch({ onClose, onCreated }: { onClose: () => void; onCreated: (b: Batch) => void }) {
   const { actions } = useData();
-  const [f, setF] = useState({ code: '', name: '', location: 'YGN' as Location, start_date: today(), end_date: '', budget: '' });
+  const [f, setF] = useState({ name: '', location: 'YGN' as Location, start_date: today(), end_date: '', budget: '' });
   const { busy, error, run } = useSubmit();
   return (
     <Modal open onClose={onClose} title="New License batch" footer={<>
@@ -219,7 +223,6 @@ function QuickBatch({ onClose, onCreated }: { onClose: () => void; onCreated: (b
       <Button busy={busy} onClick={() => run(async () => onCreated(await actions.saveBatch({ ...f, program: 'License', status: 'Active', budget: Number(f.budget) || 0 })))}>Create batch</Button>
     </>}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Batch code" required><input className="input" value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })} placeholder={`LIC-${f.location}-${new Date().getFullYear()}-01`} /></Field>
         <Field label="Branch" required><select className="input" value={f.location} onChange={(e) => setF({ ...f, location: e.target.value as Location })}>{LOCATIONS.map((l) => <option key={l} value={l}>{l} · {LOCATION_LABELS[l]}</option>)}</select></Field>
         <Field label="Name" required className="sm:col-span-2"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         <Field label="Start date"><input className="input" type="date" value={f.start_date} onChange={(e) => setF({ ...f, start_date: e.target.value })} /></Field>

@@ -4,7 +4,8 @@ import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useData } from '../lib/store';
 import { CATEGORIES, type MaterialRequest, type RequestLine } from '../lib/types';
 import { requestValue } from '../lib/logic';
-import { dateTime, mmk, num } from '../lib/format';
+import { date, mmk, monthLabel, num } from '../lib/format';
+import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { FileLink, FilePicker } from '../components/files';
 import { EXCEL_ACCEPT } from '../lib/files';
 import { Button, Empty, ErrorNote, Field, Modal, PageHeader, StatusBadge, useSubmit, useToast } from '../components/ui';
@@ -16,11 +17,14 @@ export default function RequestsPage() {
   const [status, setStatus] = useState('');
   const batch = (id: string) => data.batches.find((b) => b.id === id);
   const item = (id: string) => data.items.find((i) => i.id === id);
-  const rows = useMemo(() => data.material_requests.filter((r) => !status || r.status === status).sort((a, b) => b.created_at.localeCompare(a.created_at)), [data.material_requests, status]);
+  const [month, setMonth] = useMonthParam();
+  const rows = useMemo(() => data.material_requests.filter((r) => (!status || r.status === status) && (!month || r.created_at.startsWith(month)))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at)), [data.material_requests, status, month]);
   return (
     <>
       <PageHeader title="Material Requests" subtitle="Request materials for a training batch. Stock is issued when the L&D HOD approves."
         actions={can('request.create') && <Button onClick={() => setEdit('new')}><Plus className="h-4 w-4" />New request</Button>} />
+      <MonthBar month={month} onChange={setMonth} dates={data.material_requests.map((r) => r.created_at)} note={month ? `Requests made in ${monthLabel(month)}` : 'All requests'} />
       <select className="input mb-4 w-auto" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">All statuses</option><option>Pending</option><option>Approved</option><option>Rejected</option></select>
       <div className="space-y-3">
         {rows.map((r) => {
@@ -29,9 +33,8 @@ export default function RequestsPage() {
             <div key={r.id} className="rounded-xl border border-silver-200 bg-white p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
-                  <div className="flex items-center gap-2"><span className="font-semibold text-navy-900">{r.ref}</span><StatusBadge status={r.status} /></div>
-                  <div className="text-sm text-slate-600">{b?.code} · {b?.name}</div>
-                  <div className="text-xs text-slate-500">By {name(r.created_by)} · {dateTime(r.created_at)}{r.decided_by && ` · decided by ${name(r.decided_by)} ${dateTime(r.decided_at)}`}</div>
+                  <div className="flex items-center gap-2"><span className="font-semibold text-navy-900">{b?.name}</span><StatusBadge status={r.status} /></div>
+                  <div className="text-xs text-slate-500">By {name(r.created_by)} · {date(r.created_at)}</div>
                 </div>
                 <div className="text-right">
                   <div className="text-sm font-medium tabular-nums">{mmk(requestValue(r, data.items))}</div>
@@ -69,17 +72,17 @@ function RequestModal({ request, onClose }: { request?: MaterialRequest; onClose
   const item = (id: string) => data.items.find((i) => i.id === id);
   const total = lines.reduce((s, l) => s + Number(l.qty || 0) * (item(l.item_id)?.unit_cost ?? 0), 0);
   return (
-    <Modal wide open onClose={onClose} title={request ? `Revise ${request.ref}` : 'New material request'} footer={<>
+    <Modal wide open onClose={onClose} title={request ? 'Revise material request' : 'New material request'} footer={<>
       <span className="mr-auto self-center text-sm text-slate-600">Estimated value: <b>{mmk(total)}</b></span>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
       <Button busy={busy} onClick={() => run(async () => {
-        const r = await actions.saveRequest({ id: request?.id, batch_id: batchId, purpose, remarks, lines: lines.map<RequestLine>((l) => ({ item_id: l.item_id, qty: Number(l.qty) })) },
+        await actions.saveRequest({ id: request?.id, batch_id: batchId, purpose, remarks, lines: lines.map<RequestLine>((l) => ({ item_id: l.item_id, qty: Number(l.qty) })) },
           file[0] ?? (removeFile ? null : undefined));
-        toast(`${r.ref} sent to HOD for approval`); onClose();
+        toast('Request sent to HOD for approval'); onClose();
       })}>Submit for approval</Button>
     </>}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Training batch" required><select className="input" value={batchId} onChange={(e) => setBatchId(e.target.value)}>{batches.map((b) => <option key={b.id} value={b.id}>{b.code} · {b.name}</option>)}</select></Field>
+        <Field label="Training" required><select className="input" value={batchId} onChange={(e) => setBatchId(e.target.value)}>{batches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>
         <Field label="Purpose"><input className="input" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Day 1–3 refreshments for 30 trainees" /></Field>
         <Field label="Remarks" className="sm:col-span-2"><textarea className="input min-h-24" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Details for the HOD: number of trainees, delivery date, sizes, special instructions…" /></Field>
         <Field label="Attachment (Excel list, etc.)" className="sm:col-span-2" hint="Excel, CSV, PDF or photo">

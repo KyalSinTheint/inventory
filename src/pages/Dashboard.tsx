@@ -30,7 +30,7 @@ export default function Dashboard() {
   const budget = data.budgets.find((b) => b.fiscal_year === year && (b.category ?? 'Overall') === 'Overall')?.amount ?? 0;
   const spent = yearActual(year, data.stock_txns, data.expenses).total;
   const isApprover = user.role === 'hod' || user.role === 'finance';
-  const batchCode = (id: string) => data.batches.find((b) => b.id === id)?.code ?? '';
+  const batchName = (id: string) => data.batches.find((b) => b.id === id)?.name ?? '';
 
   return (
     <>
@@ -98,7 +98,7 @@ export default function Dashboard() {
       <div ref={alertsRef} className="mt-10 grid gap-4 lg:grid-cols-2">
         <Attention title="Deposits near the service term" empty={`No held deposits are near the ${settings.service_term_months}-month term.`} more={expiring.length > 5 ? '/deposits?status=open' : undefined}>
           {expiring.slice(0, 5).map(({ d, r }) => (
-            <Row key={d.id} to={`/deposits/${d.id}`} title={d.trainee_name} sub={`${d.ref} · ${batchCode(d.batch_id)} · ${mmk(d.amount)}`}
+            <Row key={d.id} to={`/deposits/${d.id}`} title={d.trainee_name} sub={`${batchName(d.batch_id)} · ${mmk(d.amount)}`}
               right={r.level === 'expired' ? `Ended ${date(r.dueDate)}` : `${r.daysLeft} days left`} tone={r.level === 'expired' ? 'red' : 'amber'} />
           ))}
         </Attention>

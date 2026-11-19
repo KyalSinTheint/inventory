@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { FileSpreadsheet, FileText } from 'lucide-react';
 import { useData } from '../lib/store';
 import { CATEGORIES, DEPOSIT_STATUSES } from '../lib/types';
 import { exportExcel, exportPdf, type ReportSpec } from '../lib/export';
-import { today } from '../lib/format';
+import { monthEnd, monthLabel, today } from '../lib/format';
 import { Button, Card, ErrorNote, Field, PageHeader } from '../components/ui';
 import { assetReport, depositMasterReport, forfeitureReport, stockMovementReport, varianceReport } from './reportSpecs';
 
@@ -14,9 +15,16 @@ export default function ReportsPage() {
   const { data, user, actions } = useData();
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [stock, setStock] = useState({ from: firstOfMonth(), to: today(), category: '' });
+  const [month, setMonth] = useMonthParam();
+  const [stock, setStock] = useState(() => ({ from: month ? `${month}-01` : firstOfMonth(), to: month ? monthEnd(month) : today(), category: '' }));
   const [dep, setDep] = useState({ status: '', batch: '' });
-  const [forf, setForf] = useState({ from: startOfYear(), to: today() });
+  const [forf, setForf] = useState(() => ({ from: month ? `${month}-01` : startOfYear(), to: month ? monthEnd(month) : today() }));
+  // Picking a month sets every report's date range to that month.
+  useEffect(() => {
+    if (!month) return;
+    setStock((x) => ({ ...x, from: `${month}-01`, to: monthEnd(month) }));
+    setForf({ from: `${month}-01`, to: monthEnd(month) });
+  }, [month]);
 
   async function go<T>(key: string, kind: 'xlsx' | 'pdf', spec: ReportSpec<T>) {
     setErr(null);
@@ -36,6 +44,8 @@ export default function ReportsPage() {
   return (
     <>
       <PageHeader title="Reports" subtitle="Standard reports for management, finance and audit. Every export is recorded in the audit log." />
+      <MonthBar month={month} onChange={setMonth} note={month ? `Reports for ${monthLabel(month)}` : 'Choose a month to set every report to it'}
+        dates={[...data.stock_txns.map((t) => t.created_at), ...data.deposits.map((d) => d.payment_date), ...data.expenses.map((e) => e.date)]} />
       <ErrorNote error={err} />
       <div className="mt-2 grid gap-4 lg:grid-cols-2">
         <Card title="1. Stock movement & valuation" actions={btns('stock', () => stockMovementReport(data, stock.from, stock.to, user.name, stock.category) as never)}>
@@ -46,11 +56,11 @@ export default function ReportsPage() {
             <Field label="Category"><select className="input" value={stock.category} onChange={(e) => setStock({ ...stock, category: e.target.value })}><option value="">All</option>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></Field>
           </div>
         </Card>
-        <Card title="2. License class deposit master" actions={btns('dep', () => depositMasterReport(data, data.deposits.filter((d) => (!dep.status || d.status === dep.status) && (!dep.batch || d.batch_id === dep.batch)), user.name) as never)}>
+        <Card title="2. License class deposit master" actions={btns('dep', () => depositMasterReport(data, data.deposits.filter((d) => (!dep.status || d.status === dep.status) && (!dep.batch || d.batch_id === dep.batch) && (!month || d.payment_date.startsWith(month))), user.name) as never)}>
           <p className="mb-3 text-sm text-slate-600">Trainee, batch, amount and status (Held / Refunded / Forfeited) with totals.</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Status"><select className="input" value={dep.status} onChange={(e) => setDep({ ...dep, status: e.target.value })}><option value="">All</option>{DEPOSIT_STATUSES.map((s) => <option key={s}>{s}</option>)}</select></Field>
-            <Field label="Batch"><select className="input" value={dep.batch} onChange={(e) => setDep({ ...dep, batch: e.target.value })}><option value="">All</option>{data.batches.filter((b) => b.program === 'License').map((b) => <option key={b.id} value={b.id}>{b.code}</option>)}</select></Field>
+            <Field label="Batch"><select className="input" value={dep.batch} onChange={(e) => setDep({ ...dep, batch: e.target.value })}><option value="">All</option>{data.batches.filter((b) => b.program === 'License').map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>
           </div>
         </Card>
         <Card title="3. Deposit forfeiture statement" actions={btns('forf', () => forfeitureReport(data, user.name, forf.from, forf.to) as never)}>
