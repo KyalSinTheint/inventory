@@ -223,7 +223,7 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit, onStockIn }: {
 function GroupCard({ label, count, low, onClick, Icon, muted, onEdit }: { label: string; count: number; low?: number; onClick: () => void; Icon: LucideIcon; muted?: boolean; onEdit?: () => void }) {
   const card = (
     <button onClick={onClick} role="listitem" aria-label={`${label}, ${count} item${count === 1 ? '' : 's'}${low ? `, ${low} low stock` : ''}`}
-      className={cx('group relative flex flex-col items-center gap-3 rounded-3xl px-3 py-6 text-center shadow-[0_8px_24px_-14px_rgba(15,23,42,0.3)] transition hover:-translate-y-0.5 hover:bg-kbz-navy hover:text-white hover:shadow-[0_14px_30px_-14px_rgba(0,45,114,0.8)]',
+      className={cx('group relative flex h-full w-full flex-col items-center gap-3 rounded-3xl px-3 py-6 text-center shadow-[0_8px_24px_-14px_rgba(15,23,42,0.3)] transition hover:-translate-y-0.5 hover:bg-kbz-navy hover:text-white hover:shadow-[0_14px_30px_-14px_rgba(0,45,114,0.8)]',
         muted ? 'bg-slate-100 text-slate-600' : 'bg-white text-kbz-dark')}>
       {!!low && <span className="absolute right-3 top-3 rounded-full bg-kbz-red px-2 py-0.5 text-[10px] font-bold text-white">{low} low</span>}
       <span className="grid h-20 w-20 place-items-center rounded-full bg-slate-50 ring-1 ring-slate-100 transition group-hover:bg-white group-hover:text-kbz-navy">
@@ -235,7 +235,7 @@ function GroupCard({ label, count, low, onClick, Icon, muted, onEdit }: { label:
   );
   if (!onEdit) return card;
   return (
-    <div className="group/card relative">
+    <div className="group/card relative h-full w-full">
       {card}
       <button onClick={onEdit} aria-label={`Edit main item ${label}`} title="Rename / change icon"
         className="absolute left-3 top-3 grid h-7 w-7 place-items-center rounded-full bg-white text-slate-400 opacity-0 shadow ring-1 ring-slate-200 transition hover:text-kbz-navy focus:opacity-100 group-hover/card:opacity-100">
