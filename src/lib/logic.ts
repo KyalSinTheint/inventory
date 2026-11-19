@@ -372,3 +372,9 @@ export function monthlySpend(year: number, txns: StockTxn[], expenses: Expense[]
   for (const r of rows) { r.total = r.purchases + r.expenses; cum += r.total; r.cumulative = cum; }
   return rows;
 }
+
+// ---------------------------------------------------------------- pieces in a pack
+/** Price of one piece when a unit holds several (1 Pack = 20 sachets → unit_cost / 20); null when not split. */
+export function piecePrice(item: { unit_cost: number; pack_qty: number | null }): number | null {
+  return item.pack_qty && item.pack_qty > 1 ? item.unit_cost / item.pack_qty : null;
+}

@@ -52,6 +52,24 @@ const OFFICE: Row[] = [
   ['Files & Folders', 'Pack', 4800, 5, 8],
 ];
 
+// Sample pack sizes (pieces in one unit) so the price per piece can be shown.
+function packOf(name: string): { pack_qty: number | null; piece_unit: string | null } {
+  const n = name.toLowerCase();
+  if (n.startsWith('coffee')) return { pack_qty: 20, piece_unit: 'sachet' };
+  if (n.includes('tea')) return { pack_qty: 30, piece_unit: 'sachet' };
+  if (n.includes('biscuit')) return { pack_qty: 12, piece_unit: 'piece' };
+  if (n.includes('paper cups')) return { pack_qty: 50, piece_unit: 'cup' };
+  if (n.includes('paper plates')) return { pack_qty: 50, piece_unit: 'plate' };
+  if (n.includes('napkins') || n.includes('sticky notes')) return { pack_qty: 100, piece_unit: 'sheet' };
+  if (n.includes('fruit juice')) return { pack_qty: 6, piece_unit: 'carton' };
+  if (n.includes('sugar sticks')) return { pack_qty: 100, piece_unit: 'stick' };
+  if (n.includes('stirrers')) return { pack_qty: 100, piece_unit: 'stirrer' };
+  if (n.includes('markers')) return { pack_qty: 12, piece_unit: 'marker' };
+  if (n.includes('ball pens')) return { pack_qty: 50, piece_unit: 'pen' };
+  if (n.includes('a4 paper')) return { pack_qty: 500, piece_unit: 'sheet' };
+  return { pack_qty: null, piece_unit: null };
+}
+
 export function buildSeed(): DataSet {
   n = 0;
   const now = iso(new Date());
@@ -67,7 +85,7 @@ export function buildSeed(): DataSet {
   const add = (cat: Category, prefix: string, rows: Row[], dflt: Classification) => rows.forEach(([name, unit, cost, min, , cls], i) => {
     items.push({
       id: id('itm'), code: `${prefix}-${String(i + 1).padStart(3, '0')}`, name, category: cat, classification: cls ?? dflt,
-      unit, unit_cost: cost, min_level: min, qty_on_hand: 0, active: true, photo: null, item_group: guessGroup(name, cat), created_at: iso(ago(200)),
+      unit, unit_cost: cost, min_level: min, qty_on_hand: 0, active: true, photo: null, item_group: guessGroup(name, cat), ...packOf(name), created_at: iso(ago(200)),
     });
   });
   add('Refreshments', 'RF', REFRESHMENTS, 'Consumable');

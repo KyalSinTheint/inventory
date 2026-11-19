@@ -117,6 +117,9 @@ function makeActions(
         throw new RuleError(`"${input.name.trim()}" already exists in ${input.category}.`);
       }
       if (input.unit_cost < 0 || input.min_level < 0) throw new RuleError('Cost and minimum level cannot be negative.');
+      if (input.pack_qty != null && (!Number.isInteger(input.pack_qty) || input.pack_qty < 2)) throw new RuleError('Pieces per unit must be a whole number of 2 or more (leave empty if not split).');
+      if (input.pack_qty && !input.piece_unit?.trim()) throw new RuleError('Give the name of one piece, e.g. sachet, cup, piece.');
+      input = { ...input, pack_qty: input.pack_qty || null, piece_unit: input.pack_qty ? input.piece_unit!.trim() : null };
       const code = input.code!;
       const photoPatch: Partial<Item> = photo === undefined ? {} : { photo: photo ? await db.upload(await compressImage(photo)) : null };
       if (input.id) {

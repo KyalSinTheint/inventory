@@ -31,7 +31,7 @@ export interface DataAdapter {
 }
 
 // ------------------------------------------------------------------- demo
-export const STORE_KEY = 'ld-portal-data-v2';
+export const STORE_KEY = 'ld-portal-data-v3';
 const USER_KEY = 'ld-portal-user-v1';
 const MAX_DEMO_FILE = 1_500_000;
 
@@ -153,7 +153,7 @@ export function supabaseAdapter(url: string, key: string): DataAdapter {
   // Postgres numeric comes back as a string; normalise the money / quantity columns.
   function normalise(table: TableName, rows: unknown[]) {
     const numeric: Partial<Record<TableName, string[]>> = {
-      items: ['unit_cost', 'min_level', 'qty_on_hand'], batches: ['budget'], stock_txns: ['qty', 'unit_cost'],
+      items: ['unit_cost', 'min_level', 'qty_on_hand', 'pack_qty'], batches: ['budget'], stock_txns: ['qty', 'unit_cost'],
       assets: ['cost'], asset_logs: ['cost'], deposits: ['amount'], expenses: ['amount'], budgets: ['amount', 'fiscal_year'],
       settings: ['retention_alert_months', 'service_term_months', 'low_stock_warning_pct'],
     };

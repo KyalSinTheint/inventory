@@ -37,6 +37,10 @@ export interface Item {
   photo: Attachment | null;
   /** Main item group shown as an icon card (e.g. 'coffee', 'tea'); null = worked out from the name. */
   item_group: string | null;
+  /** How many pieces are in one unit, e.g. 20 when 1 Pack = 20 sachets (null = not split). */
+  pack_qty: number | null;
+  /** Name of one piece, e.g. 'sachet', 'cup', 'piece'. */
+  piece_unit: string | null;
   created_at: string;
 }
 

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowDownToLine, ArrowLeft, Camera, Info, LayoutGrid, List, Pencil, ShoppingBasket, Plus, RotateCcw, SlidersHorizontal, ClipboardCheck, Trash2 } from 'lucide-react';
 import { stockMovement, type MovementRow } from './reportSpecs';
@@ -8,6 +8,7 @@ import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { FileLink, FilePicker, Thumb, useFileUrl } from '../components/files';
 import { DOC_ACCEPT } from '../lib/files';
 import { useData } from '../lib/store';
+import { piecePrice } from '../lib/logic';
 import { CATEGORIES, CLASSIFICATIONS, TXN_LABELS, type Category, type CountLine, type Item, type ReturnCondition } from '../lib/types';
 import { date, dateTime, mmk, monthEnd, monthLabel, num, thisMonth } from '../lib/format';
 import { Badge, Button, cx, Empty, ErrorNote, Field, Modal, PageHeader, SearchBox, StatusBadge, Tabs, useSubmit, useToast } from '../components/ui';
@@ -88,6 +89,17 @@ function ItemsTable({ rows, month, moves, onEdit }: { rows: Item[]; month: strin
     </>
   );
 }
+
+/** Brand colour per inventory category, used on the item cards and details. */
+const CAT_TONE: Record<Category, { band: string; text: string; btn: string; soft: string }> = {
+  Refreshments: { band: 'from-[#0c4f7a] to-[#1590cc]', text: 'text-[#12669e]', btn: 'bg-[#12669e] hover:bg-[#0c4f7a]', soft: 'bg-[#e6f2fa]' },
+  'Training Materials': { band: 'from-[#002d72] to-[#0047ab]', text: 'text-kbz-navy', btn: 'bg-kbz-navy hover:bg-kbz-blue', soft: 'bg-navy-50' },
+  'YCP Program': { band: 'from-[#0a5459] to-[#0f7c80]', text: 'text-[#0d6b6f]', btn: 'bg-[#0d6b6f] hover:bg-[#0a5459]', soft: 'bg-[#e4f3f3]' },
+  'Office Supplies': { band: 'from-[#3a3f46] to-[#5f656d]', text: 'text-[#4a5058]', btn: 'bg-[#4a5058] hover:bg-[#3a3f46]', soft: 'bg-slate-100' },
+};
+const pieceLabel = (i: Item) => i.piece_unit || 'piece';
+const plural = (n: number, w: string) => (n === 1 || w.endsWith('s') ? w : `${w}s`);
+const fmtPiece = (n: number) => (n >= 10 ? num(Math.round(n)) : n.toLocaleString('en-US', { maximumFractionDigits: 1 }));
 
 /**
  * Shop-style view in two steps:
@@ -306,94 +318,102 @@ function GroupModal({ group, defaultCategory, onClose, onDeleted }: { group?: It
   );
 }
 
-/** Everything about one item: price per unit, purchases (with invoices), issues to trainings and stock. */
+/** One item at a glance: price (also per piece), stock, last purchase, then short purchase and issue lists. */
 function ItemDetailModal({ item: i, qty, onClose, onEdit, onStockIn }: { item: Item; qty: number; onClose: () => void; onEdit?: () => void; onStockIn?: () => void }) {
-  const { data, can, name } = useData();
+  const { data, can } = useData();
   const nav = useNavigate();
   const { url } = useFileUrl(i.photo);
   const g = groupOf(i, data.item_groups);
+  const tone = CAT_TONE[i.category];
   const when = (t: { decided_at: string | null; created_at: string }) => t.decided_at ?? t.created_at;
   const txns = data.stock_txns.filter((t) => t.item_id === i.id).sort((a, b) => when(b).localeCompare(when(a)));
   const buys = txns.filter((t) => t.type === 'IN' && t.status !== 'Rejected');
   const lastBuy = buys.find((t) => t.status === 'Approved' && t.supplier !== 'Opening balance') ?? buys.find((t) => t.status === 'Approved');
   const issues = txns.filter((t) => t.type === 'OUT' && t.status === 'Approved');
-  const year = String(new Date().getFullYear());
-  const boughtYear = buys.filter((t) => t.status === 'Approved' && t.supplier !== 'Opening balance' && when(t).startsWith(year));
-  const issuedYear = issues.filter((t) => when(t).startsWith(year)).reduce((s, t) => s + t.qty, 0);
   const topic = (id: string | null) => data.batches.find((b) => b.id === id)?.name ?? '—';
+  const piece = piecePrice(i);
+  const pu = pieceLabel(i);
   const out = qty <= 0;
   const isLow = !out && qty <= i.min_level;
-  const facts: [string, ReactNode][] = [
-    [`Price per ${i.unit.toLowerCase()}`, <span key="p" className="text-kbz-blue">{mmk(i.unit_cost)}</span>],
-    ['In stock', <span key="s" className={out || isLow ? 'text-kbz-red' : 'text-emerald-700'}>{num(qty)} {i.unit}</span>],
-    ['Minimum level', `${num(i.min_level)} ${i.unit}`],
-    ['Stock value', mmk(qty * i.unit_cost)],
-    ['Last bought', lastBuy ? date(when(lastBuy)) : '—'],
-    [`Bought in ${year}`, boughtYear.length ? `${num(boughtYear.reduce((s, t) => s + t.qty, 0))} ${i.unit} · ${mmk(boughtYear.reduce((s, t) => s + t.qty * t.unit_cost, 0))}` : '—'],
-    [`Issued in ${year}`, `${num(issuedYear)} ${i.unit}`],
-    ['Type', i.classification],
-  ];
   return (
     <Modal wide open onClose={onClose} title={i.name} footer={<>
       {onEdit && <Button variant="secondary" className="mr-auto" onClick={onEdit}><Pencil className="h-4 w-4" />Edit item</Button>}
       {onStockIn && <Button variant="success" onClick={onStockIn}><ArrowDownToLine className="h-4 w-4" />Stock in</Button>}
       {can('request.create') && i.active && <Button disabled={out} onClick={() => nav(`/requests?new=1&item=${i.id}`)}><ShoppingBasket className="h-4 w-4" />Request</Button>}
     </>}>
-      <div className="grid gap-5 sm:grid-cols-[14rem_1fr]">
-        <div className="grid h-56 place-items-center overflow-hidden rounded-2xl bg-white ring-1 ring-slate-100">
-          {url ? <img src={url} alt={i.name} className="h-56 w-full object-contain" />
-            : <span className="grid h-28 w-28 place-items-center rounded-full bg-navy-50 text-kbz-navy"><g.icon className="h-14 w-14" strokeWidth={1.25} /></span>}
+      <div className="grid gap-5 sm:grid-cols-[13rem_1fr]">
+        <div className={cx('rounded-2xl bg-gradient-to-br p-2.5', tone.band)}>
+          <div className="grid h-48 place-items-center overflow-hidden rounded-xl bg-white">
+            {url ? <img src={url} alt={i.name} className="h-48 w-full object-contain" />
+              : <span className={cx('grid h-24 w-24 place-items-center rounded-full', tone.soft, tone.text)}><g.icon className="h-12 w-12" strokeWidth={1.25} /></span>}
+          </div>
         </div>
-        <div>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-            <span className="inline-flex items-center gap-1 rounded-full bg-navy-50 px-2.5 py-1 font-semibold text-kbz-navy"><g.icon className="h-3.5 w-3.5" />{g.label}</span>
-            <span>{i.category}</span>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className={cx('inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-semibold', tone.soft, tone.text)}><g.icon className="h-3.5 w-3.5" />{g.label}</span>
+            <span className="text-slate-500">{i.category}</span>
             {(out || isLow) && <span className="rounded-full bg-rose-100 px-2 py-0.5 font-bold uppercase text-kbz-red">{out ? 'Out of stock' : 'Low stock'}</span>}
             {!i.active && <Badge>Inactive</Badge>}
           </div>
-          <div className="mt-2 text-2xl font-bold tabular-nums text-kbz-blue">{num(i.unit_cost)} <span className="text-sm font-medium text-slate-400">MMK / {i.unit}</span></div>
-          <dl className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-4">
-            {facts.map(([k, v]) => (
-              <div key={k} className="min-w-0"><dt className="text-[11px] text-slate-500">{k}</dt><dd className="truncate text-sm font-semibold tabular-nums text-kbz-dark">{v}</dd></div>
-            ))}
-          </dl>
-          {lastBuy && (
-            <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              Last purchase: <b>{num(lastBuy.qty)} {i.unit}</b> × {num(lastBuy.unit_cost)} = <b>{mmk(lastBuy.qty * lastBuy.unit_cost)}</b> on {date(when(lastBuy))}
-              {lastBuy.supplier && lastBuy.supplier !== 'Opening balance' ? ` from ${lastBuy.supplier}` : lastBuy.supplier === 'Opening balance' ? ' (opening stock)' : ''}
-              {lastBuy.attachment && <> · <FileLink att={lastBuy.attachment} /></>}
-            </p>
-          )}
+
+          <div className={cx('mt-3 rounded-2xl p-4', tone.soft)}>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Price</div>
+            <div className={cx('mt-1 text-2xl font-bold tabular-nums', tone.text)}>{num(i.unit_cost)} <span className="text-sm font-medium text-slate-500">MMK per {i.unit.toLowerCase()}</span></div>
+            {piece !== null ? (
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-sm text-slate-700">
+                <span>1 {i.unit.toLowerCase()} = <b>{num(i.pack_qty!)} {plural(i.pack_qty!, pu)}</b></span>
+                <span className="text-slate-400">→</span>
+                <span><b className={tone.text}>{fmtPiece(piece)} MMK</b> per {pu}</span>
+              </div>
+            ) : <div className="mt-1 text-xs text-slate-400">Sold as a whole {i.unit.toLowerCase()} (not split into pieces).</div>}
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
+              <div className="text-[11px] text-slate-500">In stock</div>
+              <div className={cx('text-base font-bold tabular-nums', out || isLow ? 'text-kbz-red' : 'text-kbz-dark')}>{num(qty)} <span className="text-xs font-medium">{i.unit}</span></div>
+              <div className="text-[11px] text-slate-400">{piece !== null ? `${num(qty * i.pack_qty!)} ${plural(qty * i.pack_qty!, pu)} · ` : ''}min {num(i.min_level)}</div>
+            </div>
+            <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
+              <div className="text-[11px] text-slate-500">Last bought</div>
+              <div className="text-base font-bold text-kbz-dark">{lastBuy ? date(when(lastBuy)) : '—'}</div>
+              <div className="truncate text-[11px] text-slate-400">{lastBuy ? `${num(lastBuy.qty)} ${i.unit} × ${num(lastBuy.unit_cost)}` : 'No purchase yet'}</div>
+            </div>
+            <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
+              <div className="text-[11px] text-slate-500">Stock value</div>
+              <div className="text-base font-bold tabular-nums text-kbz-dark">{num(qty * i.unit_cost)}</div>
+              <div className="text-[11px] text-slate-400">MMK</div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <h4 className="mb-2 mt-6 text-sm font-bold text-kbz-dark">Purchase history</h4>
+      <h4 className="mb-2 mt-6 text-sm font-bold text-kbz-dark">Purchases</h4>
       {buys.length === 0 ? <p className="text-sm text-slate-400">No purchases recorded yet.</p> : (
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead><tr><th>Date</th><th className="num">Qty</th><th className="num">Price / unit</th><th className="num">Total</th><th>Invoice</th><th>Status</th></tr></thead>
-            <tbody>{buys.slice(0, 8).map((t) => (
-              <tr key={t.id}>
-                <td className="whitespace-nowrap">{date(when(t))}{t.supplier === 'Opening balance' && <div className="text-[11px] text-slate-400">Opening stock</div>}</td>
-                <td className="num">{num(t.qty)}</td><td className="num">{num(t.unit_cost)}</td><td className="num font-semibold">{num(t.qty * t.unit_cost)}</td>
-                <td className="text-xs">{t.attachment ? <FileLink att={t.attachment} /> : <span className="text-slate-400">—</span>}</td>
-                <td><StatusBadge status={t.status} /></td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
+        <ul className="divide-y divide-slate-100 rounded-2xl ring-1 ring-slate-200">
+          {buys.slice(0, 5).map((t) => (
+            <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-sm">
+              <span className="w-24 shrink-0 text-slate-600">{date(when(t))}</span>
+              <span className="min-w-0 flex-1 tabular-nums"><b>{num(t.qty)}</b> {i.unit} × {num(t.unit_cost)}{i.pack_qty && i.pack_qty > 1 ? <span className="text-slate-400"> ({fmtPiece(t.unit_cost / i.pack_qty)} / {pu})</span> : null}</span>
+              <b className="tabular-nums">{num(t.qty * t.unit_cost)} MMK</b>
+              {t.supplier === 'Opening balance' ? <span className="text-[11px] text-slate-400">Opening stock</span> : t.attachment ? <FileLink att={t.attachment} className="text-xs" /> : null}
+              {t.status !== 'Approved' && <StatusBadge status={t.status} />}
+            </li>
+          ))}
+        </ul>
       )}
 
-      <h4 className="mb-2 mt-6 text-sm font-bold text-kbz-dark">Issued to trainings</h4>
-      {issues.length === 0 ? <p className="text-sm text-slate-400">Not issued to any training yet.</p> : (
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead><tr><th>Date</th><th>Training</th><th className="num">Qty</th><th>Requested by</th></tr></thead>
-            <tbody>{issues.slice(0, 8).map((t) => (
-              <tr key={t.id}><td className="whitespace-nowrap">{date(when(t))}</td><td>{topic(t.batch_id)}</td><td className="num">{num(t.qty)}</td><td className="text-xs">{name(t.created_by)}</td></tr>
-            ))}</tbody>
-          </table>
-        </div>
+      <h4 className="mb-2 mt-5 text-sm font-bold text-kbz-dark">Given to trainings</h4>
+      {issues.length === 0 ? <p className="text-sm text-slate-400">Not given to any training yet.</p> : (
+        <ul className="divide-y divide-slate-100 rounded-2xl ring-1 ring-slate-200">
+          {issues.slice(0, 5).map((t) => (
+            <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-sm">
+              <span className="w-24 shrink-0 text-slate-600">{date(when(t))}</span>
+              <span className="min-w-0 flex-1 truncate">{topic(t.batch_id)}</span>
+              <b className="tabular-nums">{num(t.qty)} {i.unit}</b>
+            </li>
+          ))}
+        </ul>
       )}
     </Modal>
   );
@@ -403,6 +423,7 @@ function ProductCard({ item: i, qty, onEdit, onOpen, showGroup }: { item: Item; 
   const { can, actions, data } = useData();
   const toast = useToast();
   const g = groupOf(i, data.item_groups);
+  const tone = CAT_TONE[i.category];
   const out = qty <= 0;
   const isLow = !out && qty <= i.min_level;
   const { url } = useFileUrl(i.photo);
@@ -413,53 +434,60 @@ function ProductCard({ item: i, qty, onEdit, onOpen, showGroup }: { item: Item; 
     setUploading(true);
     try {
       await actions.saveItem({ id: i.id, name: i.name, category: i.category, classification: i.classification, unit: i.unit, unit_cost: i.unit_cost,
-        min_level: i.min_level, active: i.active, item_group: i.item_group }, file);
+        min_level: i.min_level, active: i.active, item_group: i.item_group, pack_qty: i.pack_qty ?? null, piece_unit: i.piece_unit ?? null }, file);
       toast(`Photo saved for ${i.name}`);
     } catch (e) { toast((e as Error).message, 'error'); } finally { setUploading(false); }
   };
   const photoInput = canPhoto && <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={uploading} onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ''; }} />;
   return (
-    <div className={cx('group relative flex flex-col rounded-2xl bg-white p-3 shadow-[0_6px_22px_-12px_rgba(15,23,42,0.3)] transition hover:shadow-[0_14px_30px_-14px_rgba(15,23,42,0.35)]', !i.active && 'opacity-60')}>
-      {(out || isLow || !i.active) && (
-        <span className={cx('absolute left-3 top-3 z-10 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase',
-          !i.active ? 'bg-slate-200 text-slate-600' : out ? 'bg-slate-700 text-white' : 'bg-rose-100 text-kbz-red')}>
-          {!i.active ? 'Inactive' : out ? 'Out of stock' : 'Low stock'}
-        </span>
-      )}
-      {onEdit && (
-        <button onClick={onEdit} className="absolute right-3 top-3 z-10 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-slate-400 ring-1 ring-slate-200 hover:text-kbz-navy" aria-label={`Edit ${i.name}`}>
-          <Pencil className="h-3.5 w-3.5" />
-        </button>
-      )}
-      <div className="relative h-40 overflow-hidden rounded-xl bg-white">
-        {url ? (
-          <button onClick={onOpen} className="block h-40 w-full" aria-label={`Photo of ${i.name}`}><img src={url} alt={i.name} className="h-40 w-full object-contain" loading="lazy" /></button>
-        ) : canPhoto ? (
-          <label className={cx('flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 transition hover:border-kbz-navy hover:text-kbz-navy', uploading && 'animate-pulse')}>
-            <Camera className="h-7 w-7" strokeWidth={1.5} />
-            <span className="text-xs font-semibold">{uploading ? 'Uploading…' : 'Add photo'}</span>
-            {photoInput}
-          </label>
-        ) : (
-          <button onClick={onOpen} className="flex h-40 w-full items-center justify-center" aria-label={`Photo of ${i.name}`}><span className="grid h-24 w-24 place-items-center rounded-full bg-navy-50 text-kbz-navy"><g.icon className="h-12 w-12" strokeWidth={1.25} /></span></button>
+    <div className={cx('group relative flex flex-col overflow-hidden rounded-2xl bg-white shadow-[0_8px_24px_-14px_rgba(0,45,114,0.45)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_32px_-16px_rgba(0,45,114,0.55)]', !i.active && 'opacity-60')}>
+      {/* coloured top with the photo on a white tile */}
+      <div className={cx('relative bg-gradient-to-br p-3', tone.band)}>
+        {(out || isLow || !i.active) && (
+          <span className={cx('absolute left-3 top-3 z-10 rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase shadow-sm', out || isLow ? 'text-kbz-red' : 'text-slate-600')}>
+            {!i.active ? 'Inactive' : out ? 'Out of stock' : 'Low stock'}
+          </span>
         )}
-        {url && canPhoto && (
-          <label className="absolute bottom-1 right-1 grid h-7 w-7 cursor-pointer place-items-center rounded-full bg-white/90 text-slate-500 opacity-0 shadow ring-1 ring-slate-200 transition hover:text-kbz-navy group-hover:opacity-100 focus-within:opacity-100" title="Change photo" aria-label={`Change photo of ${i.name}`}>
-            <Camera className="h-3.5 w-3.5" />{photoInput}
-          </label>
+        {onEdit && (
+          <button onClick={onEdit} className="absolute right-3 top-3 z-10 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-slate-500 shadow-sm hover:text-kbz-navy" aria-label={`Edit ${i.name}`}>
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
         )}
-      </div>
-      <div className="mt-3 text-[11px] text-slate-400">{showGroup ? `${g.label} · ` : ''}{i.unit}</div>
-      <button onClick={onOpen} className="mt-0.5 line-clamp-2 min-h-[2.5rem] text-left text-sm font-semibold leading-snug text-kbz-dark hover:text-kbz-blue hover:underline">{i.name}</button>
-      <div className="mt-2 flex items-end justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-sm font-bold tabular-nums text-kbz-blue">{num(i.unit_cost)} <span className="text-[11px] font-medium text-slate-400">MMK / {i.unit}</span></div>
-          <div className={cx('text-[11px] font-semibold tabular-nums', out || isLow ? 'text-kbz-red' : 'text-emerald-700')}>{num(qty)} in stock{isLow ? ` · min ${num(i.min_level)}` : ''}</div>
+        <div className="relative mt-7 h-36 overflow-hidden rounded-xl bg-white">
+          {url ? (
+            <button onClick={onOpen} className="block h-36 w-full" aria-label={`Photo of ${i.name}`}><img src={url} alt={i.name} className="h-36 w-full object-contain" loading="lazy" /></button>
+          ) : canPhoto ? (
+            <label className={cx('flex h-36 cursor-pointer flex-col items-center justify-center gap-1.5 text-slate-400 transition hover:text-kbz-navy', uploading && 'animate-pulse')}>
+              <span className={cx('grid h-14 w-14 place-items-center rounded-full', tone.soft, tone.text)}><g.icon className="h-7 w-7" strokeWidth={1.4} /></span>
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold"><Camera className="h-3.5 w-3.5" />{uploading ? 'Uploading…' : 'Add photo'}</span>
+              {photoInput}
+            </label>
+          ) : (
+            <button onClick={onOpen} className="flex h-36 w-full items-center justify-center" aria-label={`Photo of ${i.name}`}>
+              <span className={cx('grid h-20 w-20 place-items-center rounded-full', tone.soft, tone.text)}><g.icon className="h-10 w-10" strokeWidth={1.3} /></span>
+            </button>
+          )}
+          {url && canPhoto && (
+            <label className="absolute bottom-1 right-1 grid h-7 w-7 cursor-pointer place-items-center rounded-full bg-white/90 text-slate-500 opacity-0 shadow ring-1 ring-slate-200 transition hover:text-kbz-navy group-hover:opacity-100 focus-within:opacity-100" title="Change photo" aria-label={`Change photo of ${i.name}`}>
+              <Camera className="h-3.5 w-3.5" />{photoInput}
+            </label>
+          )}
         </div>
-        <button onClick={onOpen} aria-label={`Details of ${i.name}`}
-          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-kbz-dark transition hover:bg-kbz-navy hover:text-white">
-          <Info className="h-3.5 w-3.5" />Details
-        </button>
+      </div>
+      {/* text */}
+      <div className="flex flex-1 flex-col p-3">
+        <div className={cx('text-[11px] font-semibold', tone.text)}>{showGroup ? `${g.label} · ` : ''}{i.unit}{i.pack_qty ? ` of ${i.pack_qty} ${plural(i.pack_qty, pieceLabel(i))}` : ''}</div>
+        <button onClick={onOpen} className="mt-0.5 line-clamp-2 min-h-[2.5rem] text-left text-sm font-semibold leading-snug text-kbz-dark hover:underline">{i.name}</button>
+        <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+          <div className="min-w-0">
+            <div className={cx('text-sm font-bold tabular-nums', tone.text)}>{num(i.unit_cost)} <span className="text-[11px] font-medium text-slate-400">MMK / {i.unit}</span></div>
+            <div className={cx('text-[11px] font-semibold tabular-nums', out || isLow ? 'text-kbz-red' : 'text-emerald-700')}>{num(qty)} in stock</div>
+          </div>
+          <button onClick={onOpen} aria-label={`Details of ${i.name}`}
+            className={cx('inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-xs font-semibold text-white transition', tone.btn)}>
+            <Info className="h-3.5 w-3.5" />Details
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -624,6 +652,7 @@ function ItemModal({ item, onClose, initialGroup }: { item?: Item; onClose: () =
   const [f, setF] = useState({
     name: item?.name ?? '', category: item?.category ?? groupsFor('', data.item_groups).find((g) => g.id === initialGroup)?.category ?? ('Refreshments' as Category), classification: item?.classification ?? 'Consumable',
     unit: item?.unit ?? 'Piece', unit_cost: String(item?.unit_cost ?? ''), min_level: String(item?.min_level ?? ''), active: item?.active ?? true,
+    pack_qty: item?.pack_qty ? String(item.pack_qty) : '', piece_unit: item?.piece_unit ?? '',
     item_group: item ? groupOf(item, data.item_groups).id : initialGroup && initialGroup !== 'all' ? initialGroup : '',
   });
   const { busy, error, run } = useSubmit();
@@ -633,7 +662,8 @@ function ItemModal({ item, onClose, initialGroup }: { item?: Item; onClose: () =
   return (
     <Modal open onClose={onClose} title={item ? `Edit ${item.name}` : 'New inventory item'} footer={<>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
-      <Button busy={busy} onClick={() => run(async () => { await actions.saveItem({ ...f, item_group: f.item_group || null, id: item?.id, unit_cost: Number(f.unit_cost), min_level: Number(f.min_level) }, photo); toast('Item saved'); onClose(); })}>Save</Button>
+      <Button busy={busy} onClick={() => run(async () => { await actions.saveItem({ ...f, item_group: f.item_group || null, id: item?.id, unit_cost: Number(f.unit_cost), min_level: Number(f.min_level),
+        pack_qty: f.pack_qty.trim() ? Number(f.pack_qty) : null, piece_unit: f.piece_unit.trim() || null }, photo); toast('Item saved'); onClose(); })}>Save</Button>
     </>}>
       <div className="mb-4 flex items-center gap-4">
         {preview ? <img src={preview} alt="New photo" className="h-24 w-24 rounded-lg border border-silver-200 object-cover" /> : <Thumb att={photo === null ? null : item?.photo} alt={item?.name ?? ''} size={96} />}
@@ -656,6 +686,16 @@ function ItemModal({ item, onClose, initialGroup }: { item?: Item; onClose: () =
         <Field label="Classification"><select className="input" value={f.classification} onChange={(e) => setF({ ...f, classification: e.target.value as Item['classification'] })}>{CLASSIFICATIONS.map((c) => <option key={c}>{c}</option>)}</select></Field>
         <Field label="Cost per unit (MMK)"><input className="input" type="number" min="0" value={f.unit_cost} onChange={(e) => setF({ ...f, unit_cost: e.target.value })} /></Field>
         <Field label="Minimum level" hint="Red alert at or below this"><input className="input" type="number" min="0" value={f.min_level} onChange={(e) => setF({ ...f, min_level: e.target.value })} /></Field>
+        <div className="rounded-xl bg-slate-50 p-3 sm:col-span-2">
+          <div className="mb-2 text-xs font-semibold text-slate-600">Pieces inside one {f.unit.trim() || 'unit'} <span className="font-normal text-slate-400">(optional, e.g. 1 Pack = 20 sachets)</span></div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="How many pieces"><input className="input" type="number" min="2" step="1" value={f.pack_qty} onChange={(e) => setF({ ...f, pack_qty: e.target.value })} placeholder="e.g. 20" /></Field>
+            <Field label="Name of one piece"><input className="input" value={f.piece_unit} onChange={(e) => setF({ ...f, piece_unit: e.target.value })} placeholder="e.g. sachet, cup, piece" /></Field>
+          </div>
+          {Number(f.pack_qty) > 1 && Number(f.unit_cost) > 0 && (
+            <p className="mt-2 text-xs text-slate-600">= <b className="text-kbz-blue">{num(Math.round(Number(f.unit_cost) / Number(f.pack_qty)))} MMK</b> per {f.piece_unit.trim() || 'piece'}</p>
+          )}
+        </div>
         {item && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} />Active</label>}
       </div>
       {!item && <p className="mt-3 text-xs text-slate-500">New items start at zero. Use Stock in to add the opening quantity.</p>}

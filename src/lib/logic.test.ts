@@ -246,3 +246,13 @@ test('main items: saved rows rename / re-icon built-ins and add custom groups', 
   assert.equal(groupOf({ name: 'Coffee - Royal', category: 'Refreshments', item_group: null }, saved).label, 'Coffee & Espresso');
   assert.equal(iconFor('NotAnIcon'), ICONS.Package);
 });
+
+test('price per piece: 1 Pack = 20 sachets', async () => {
+  const { piecePrice } = await import('./logic');
+  assert.equal(piecePrice({ unit_cost: 6800, pack_qty: 20 }), 340);
+  assert.equal(piecePrice({ unit_cost: 2500, pack_qty: 50 }), 50);
+  assert.equal(piecePrice({ unit_cost: 400, pack_qty: null }), null);
+  assert.equal(piecePrice({ unit_cost: 400, pack_qty: 1 }), null);
+  const coffee = buildSeed().items.find((i) => i.name === 'Coffee - Espresso')!;
+  assert.deepEqual([coffee.pack_qty, coffee.piece_unit], [20, 'sachet']);
+});
