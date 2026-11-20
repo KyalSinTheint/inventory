@@ -185,7 +185,7 @@ function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (i
         </Field>
         <Field label="NRC number" required hint={NRC_HINT}><input className="input" value={f.nrc} onChange={set('nrc')} placeholder="12/MaYaKa(N)123456" /></Field>
         <Field label="Agent code / employee ID" hint="Optional"><input className="input uppercase" value={f.agent_code} onChange={set('agent_code')} /></Field>
-        <Field label="License course batch" required hint={batches.length ? undefined : 'Choose “+ New training” to add the License batch.'}>
+        <Field label="License course batch" required hint={batches.length ? undefined : 'Type the batch name to add it.'}>
           <TrainingPicker value={f.batch_id} batches={batches} program="License" required
             onChange={(id, b) => setF({ ...f, batch_id: id, training_date: b?.start_date || f.training_date, training_end_date: b?.end_date || b?.start_date || f.training_end_date })} />
         </Field>

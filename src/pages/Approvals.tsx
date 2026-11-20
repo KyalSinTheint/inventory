@@ -3,12 +3,13 @@ import { Link } from 'react-router-dom';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { useData } from '../lib/store';
 import { TXN_LABELS } from '../lib/types';
-import { actsAsHod, fmtQty, fmtTxnQty, lineName, lineQtyText, lineShort, requestValue, txnValue } from '../lib/logic';
+import { actsAsHod, fmtQty, fmtTxnQty, lineShort, requestValue, txnValue } from '../lib/logic';
 import { date, mmk, monthLabel, num } from '../lib/format';
 import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { Badge, Button, Card, Empty, ErrorNote, Field, Modal, PageHeader, StatusBadge, useSubmit, useToast } from '../components/ui';
 import { DepositActions } from '../components/DepositActions';
 import { FileLink } from '../components/files';
+import { RequestLinesTable } from '../components/RequestLines';
 
 export default function ApprovalsPage() {
   const { data, user, name, actions } = useData();
@@ -60,14 +61,22 @@ export default function ApprovalsPage() {
                   return (
                     <li key={r.id} className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-start">
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium text-navy-800">{batch(r.batch_id)?.name} <span className="font-normal text-slate-500">({mmk(requestValue(r, data.items))})</span></div>
-                        <div className="text-xs text-slate-500">By {name(r.created_by)} · {date(r.created_at)}</div>
-                        {r.purpose && <div className="mt-1 text-sm">{r.purpose}</div>}
-                        {r.remarks && <div className="mt-1 whitespace-pre-line text-xs text-slate-600">{r.remarks}</div>}
-                        {r.attachment && <div className="mt-1 text-xs"><FileLink att={r.attachment} /></div>}
-                        <ul className="mt-1.5 flex flex-wrap gap-1.5">
-                          {r.lines.map((l, i) => { const it = item(l.item_id); const bad = lineShort(l, it); return <li key={i} className={`rounded-md px-2 py-0.5 text-xs ${bad ? 'bg-red-50 text-red-700' : 'bg-silver-100'}`}>{lineName(l, data.items)} × {lineQtyText(l, data.items)} <span className="text-slate-500">({it ? `${fmtQty(it, it.qty_on_hand)} on hand` : 'not in store'})</span></li>; })}
-                        </ul>
+                        {(() => { const b = batch(r.batch_id); return (
+                          <div className="flex flex-wrap items-baseline gap-x-2">
+                            <span className="font-semibold text-navy-800">{b?.name ?? 'Training'}</span>
+                            {b && <span className="text-xs text-slate-500">{[b.program, b.location, b.start_date && `${date(b.start_date)}${b.end_date ? ` – ${date(b.end_date)}` : ''}`].filter(Boolean).join(' · ')}</span>}
+                            <span className="ml-auto font-bold text-kbz-blue">{mmk(requestValue(r, data.items))}</span>
+                          </div>
+                        ); })()}
+                        <div className="text-xs text-slate-500">Requested by <b className="text-slate-700">{name(r.created_by)}</b> · {date(r.created_at)}</div>
+                        {(r.purpose || r.remarks) && (
+                          <div className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                            {r.purpose && <div><span className="text-xs text-slate-500">Purpose: </span>{r.purpose}</div>}
+                            {r.remarks && <div className="mt-0.5 whitespace-pre-line text-slate-600"><span className="text-xs text-slate-500">Remarks: </span>{r.remarks}</div>}
+                          </div>
+                        )}
+                        {r.attachment && <div className="mt-1.5 text-xs"><FileLink att={r.attachment} /></div>}
+                        <div className="mt-2"><RequestLinesTable lines={r.lines} items={data.items} pending /></div>
                         {short.length > 0 && <div className="mt-1 text-xs text-red-600">Not enough stock to issue: reject or wait for a stock in.</div>}
                       </div>
                       <Decide label="request" onDecide={(ok, note) => actions.decideRequest(r.id, ok, note)} />

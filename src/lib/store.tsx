@@ -277,7 +277,10 @@ function makeActions(
       const lines: RequestLine[] = input.lines.filter((l) => l.item_id || l.name?.trim()).map((l) => {
         if (!l.item_id) {
           // Typed item that is not in the store: keep its name, unit and estimated cost.
-          return { item_id: '', qty: l.qty, name: l.name!.trim(), ...(l.unit?.trim() ? { unit: l.unit.trim() } : {}), ...(l.unit_cost ? { unit_cost: l.unit_cost } : {}) };
+          return {
+            item_id: '', qty: l.qty, name: l.name!.trim(), ...(l.unit?.trim() ? { unit: l.unit.trim() } : {}), ...(l.unit_cost ? { unit_cost: l.unit_cost } : {}),
+            ...(l.pack_qty && Number.isInteger(l.pack_qty) && l.pack_qty > 1 ? { pack_qty: l.pack_qty } : {}),
+          };
         }
         const it = get().data.items.find((i) => i.id === l.item_id);
         return it && canSplit(it) && l.by_piece ? { item_id: l.item_id, qty: l.qty, by_piece: true } : { item_id: l.item_id, qty: l.qty };

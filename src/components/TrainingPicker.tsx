@@ -1,15 +1,13 @@
-import { useState } from 'react';
-import { Check, X } from 'lucide-react';
+import { useEffect, useId, useState } from 'react';
+import { Check } from 'lucide-react';
 import { useData } from '../lib/store';
 import { LOCATIONS, LOCATION_LABELS, PROGRAMS, type Batch, type Location, type Program } from '../lib/types';
-import { today } from '../lib/format';
+import { date, today } from '../lib/format';
 import { Button, ErrorNote, useSubmit, useToast } from './ui';
 
-const NEW = '__new__';
-
 /**
- * Choose a training, or type a new training name right here ("+ New training…").
- * The new training is saved (with its program, branch and dates) and selected.
+ * Type a training name, or pick one of the existing trainings from the list that appears as you type.
+ * A name that is not in the list can be added on the spot (program, branch and dates), then it is selected.
  */
 export function TrainingPicker({ value, onChange, batches, program, none, required }: {
   value: string;
@@ -18,35 +16,51 @@ export function TrainingPicker({ value, onChange, batches, program, none, requir
   batches: Batch[];
   /** Lock new trainings to one program, e.g. 'License' for deposits. */
   program?: Program;
-  /** Label of an empty choice, e.g. "No training"; omit when a training is required. */
+  /** Placeholder when no training is chosen, e.g. "No training"; when set, leaving it empty is allowed. */
   none?: string;
   required?: boolean;
 }) {
-  const { actions, can } = useData();
+  const { data, actions, can } = useData();
   const toast = useToast();
+  const listId = useId();
   const allowed = can('batch.create');
-  const [adding, setAdding] = useState(false);
-  const [f, setF] = useState({ name: '', program: program ?? ('Product & Soft Skills' as Program), location: 'YGN' as Location, start_date: today(), end_date: '' });
+  const nameOf = (id: string) => data.batches.find((b) => b.id === id)?.name ?? '';
+  const [text, setText] = useState(() => nameOf(value));
+  const [f, setF] = useState({ program: program ?? ('Product & Soft Skills' as Program), location: 'YGN' as Location, start_date: today(), end_date: '' });
   const { busy, error, run } = useSubmit();
   const prog = program ?? f.program;
   const list = [...batches].sort((a, b) => (b.start_date ?? '').localeCompare(a.start_date ?? ''));
+  const match = (t: string) => batches.find((b) => b.name.trim().toLowerCase() === t.trim().toLowerCase());
+
+  // Follow a value chosen elsewhere (e.g. the form was reset).
+  useEffect(() => {
+    if (value && nameOf(value) && nameOf(value) !== text) setText(nameOf(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  const typedNew = text.trim() !== '' && !match(text);
+  const sameNameElsewhere = typedNew && data.batches.some((b) => b.name.trim().toLowerCase() === text.trim().toLowerCase());
 
   return (
     <div>
-      <select className="input" value={adding ? NEW : value} required={required} aria-label="Training"
+      <input className="input" list={listId} value={text} required={required} aria-label="Training"
+        placeholder={none ?? 'Type or choose a training…'}
         onChange={(e) => {
-          if (e.target.value === NEW) { setAdding(true); return; }
-          setAdding(false);
-          onChange(e.target.value, batches.find((b) => b.id === e.target.value));
-        }}>
-        {(none !== undefined || !value) && <option value="">{none ?? 'Choose training…'}</option>}
-        {list.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-        {allowed && <option value={NEW}>+ New training (type a name)…</option>}
-      </select>
-      {adding && (
+          setText(e.target.value);
+          const m = match(e.target.value);
+          onChange(m?.id ?? '', m);
+        }} />
+      <datalist id={listId}>
+        {list.map((b) => <option key={b.id} value={b.name}>{[b.program, b.location, b.start_date && date(b.start_date)].filter(Boolean).join(' · ')}</option>)}
+      </datalist>
+      {value && !typedNew && (() => { const b = data.batches.find((x) => x.id === value); return b ? (
+        <p className="mt-1 text-xs text-emerald-700">{[b.program, b.location, b.start_date && `${date(b.start_date)}${b.end_date ? ` – ${date(b.end_date)}` : ''}`].filter(Boolean).join(' · ')}</p>
+      ) : null; })()}
+      {typedNew && (sameNameElsewhere ? (
+        <p className="mt-1 text-xs text-amber-700">“{text.trim()}” exists but cannot be used here (completed, or another program).</p>
+      ) : allowed ? (
         <div className="mt-2 rounded-2xl bg-sky-50/80 p-3 ring-1 ring-sky-200">
-          <input className="input" autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })}
-            placeholder="Training name, e.g. Sales Skills Workshop (Dec)" aria-label="New training name" />
+          <p className="text-xs font-semibold text-kbz-navy">New training: “{text.trim()}”</p>
           {(!program || prog === 'License') && (
             <div className="mt-2 flex gap-2">
               {!program && (
@@ -65,21 +79,20 @@ export function TrainingPicker({ value, onChange, batches, program, none, requir
             <label className="text-xs text-slate-500">Start date<input className="input mt-0.5" type="date" value={f.start_date} onChange={(e) => setF({ ...f, start_date: e.target.value })} /></label>
             <label className="text-xs text-slate-500">End date<input className="input mt-0.5" type="date" min={f.start_date} value={f.end_date} onChange={(e) => setF({ ...f, end_date: e.target.value })} /></label>
           </div>
-          <div className="mt-2 flex justify-end gap-2">
-            <Button size="sm" variant="ghost" type="button" onClick={() => { setAdding(false); setF({ ...f, name: '' }); }}><X className="h-4 w-4" />Cancel</Button>
+          <div className="mt-2 flex justify-end">
             <Button size="sm" type="button" busy={busy} onClick={() => run(async () => {
               const b = await actions.saveBatch({
-                name: f.name, program: prog, location: prog === 'License' ? f.location : null,
+                name: text, program: prog, location: prog === 'License' ? f.location : null,
                 start_date: f.start_date || today(), end_date: f.end_date, budget: 0, status: 'Active',
               });
               toast(`Training "${b.name}" added`);
-              setAdding(false); setF({ ...f, name: '' });
+              setText(b.name);
               onChange(b.id, b);
-            })}><Check className="h-4 w-4" />Add training</Button>
+            })}><Check className="h-4 w-4" />Add this training</Button>
           </div>
           <ErrorNote error={error} />
         </div>
-      )}
+      ) : <p className="mt-1 text-xs text-amber-700">Choose a training from the list.</p>)}
     </div>
   );
 }

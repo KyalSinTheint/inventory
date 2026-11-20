@@ -128,6 +128,9 @@ export interface RequestLine {
   name?: string;
   unit?: string;
   unit_cost?: number;
+  /** Typed item: pieces in one unit (e.g. 20 sachets in a pack), for the price per piece. */
+  pack_qty?: number;
+  piece_unit?: string;
 }
 
 export interface MaterialRequest {

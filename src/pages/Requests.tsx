@@ -4,13 +4,14 @@ import { ClipboardList, Pencil, Plus, Trash2 } from 'lucide-react';
 import { GlassArea, notchMask } from '../components/glass';
 import { useData } from '../lib/store';
 import { CATEGORIES, type MaterialRequest, type RequestLine } from '../lib/types';
-import { canSplit, fmtPieces, fmtQty, isCustomLine, lineAmount, lineName, lineQtyText, linePieces, lineShort, piecesIn, requestValue } from '../lib/logic';
+import { canSplit, fmtPieces, fmtQty, lineAmount, linePieces, piecesIn, requestValue } from '../lib/logic';
 import { date, mmk, monthLabel, num } from '../lib/format';
 import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { FileLink, FilePicker } from '../components/files';
 import { EXCEL_ACCEPT } from '../lib/files';
 import { Button, cx, Empty, ErrorNote, Field, Modal, PageHeader, useSubmit, useToast } from '../components/ui';
 import { TrainingPicker } from '../components/TrainingPicker';
+import { RequestLinesTable } from '../components/RequestLines';
 
 export default function RequestsPage() {
   const { data, can } = useData();
@@ -102,7 +103,6 @@ function RequestTicket({ r, onOpen }: { r: MaterialRequest; onOpen: () => void }
 function RequestDetail({ r, onClose, onRevise }: { r: MaterialRequest; onClose: () => void; onRevise: () => void }) {
   const { data, can, name } = useData();
   const b = data.batches.find((x) => x.id === r.batch_id);
-  const item = (id: string) => data.items.find((i) => i.id === id);
   const pill = STATUS_PILL[r.status];
   return (
     <Modal wide open onClose={onClose} title={`Material request · ${b?.name ?? ''}`} footer={<>
@@ -123,26 +123,12 @@ function RequestDetail({ r, onClose, onRevise }: { r: MaterialRequest; onClose: 
       )}
       {r.attachment && <div className="mt-3 text-sm"><FileLink att={r.attachment} /></div>}
       <h4 className="mb-2 mt-5 text-sm font-bold text-kbz-dark">Items</h4>
-      <ul className="divide-y divide-slate-100 rounded-2xl ring-1 ring-slate-200">
-        {r.lines.map((l, idx) => {
-          const it = item(l.item_id);
-          const short = r.status === 'Pending' && lineShort(l, it);
-          return (
-            <li key={idx} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-sm">
-              <span className="min-w-0 flex-1 truncate font-medium text-kbz-dark">{lineName(l, data.items)}{isCustomLine(l) && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Not in store</span>}</span>
-              <b className="tabular-nums">{lineQtyText(l, data.items)}</b>
-              <span className="w-28 text-right tabular-nums text-slate-500">{num(Math.round(lineAmount(l, data.items)))} MMK</span>
-              {r.status === 'Pending' && it && <span className={cx('w-32 text-right text-xs', short ? 'font-semibold text-kbz-red' : 'text-slate-400')}>{fmtQty(it, it.qty_on_hand)} on hand</span>}
-            </li>
-          );
-        })}
-      </ul>
-      <p className="mt-2 text-right text-sm">Total: <b className="text-kbz-blue">{mmk(requestValue(r, data.items))}</b></p>
+      <RequestLinesTable lines={r.lines} items={data.items} pending={r.status === 'Pending'} />
     </Modal>
   );
 }
 
-type FormLine = { text: string; item_id: string; qty: string; by_piece: boolean; unit: string; cost: string };
+type FormLine = { text: string; item_id: string; qty: string; by_piece: boolean; unit: string; cost: string; pack: string };
 
 function RequestModal({ request, initialItem, onClose }: { request?: MaterialRequest; initialItem?: string; onClose: () => void }) {
   const { data, actions } = useData();
@@ -155,17 +141,17 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
   const [removeFile, setRemoveFile] = useState(false);
   const item = (id: string) => data.items.find((i) => i.id === id);
   const active = data.items.filter((i) => i.active);
-  const blank: FormLine = { text: '', item_id: '', qty: '', by_piece: false, unit: '', cost: '' };
+  const blank: FormLine = { text: '', item_id: '', qty: '', by_piece: false, unit: '', cost: '', pack: '' };
   const [lines, setLines] = useState<FormLine[]>(() => request?.lines.map((l) => ({
     text: l.item_id ? item(l.item_id)?.name ?? '' : l.name ?? '', item_id: l.item_id, qty: String(l.qty), by_piece: !!l.by_piece,
-    unit: l.unit ?? '', cost: l.unit_cost ? String(l.unit_cost) : '',
+    unit: l.unit ?? '', cost: l.unit_cost ? String(l.unit_cost) : '', pack: l.pack_qty ? String(l.pack_qty) : '',
   })) ?? [initialItem && item(initialItem) ? { ...blank, text: item(initialItem)!.name, item_id: initialItem } : blank]);
   const { busy, error, run } = useSubmit();
   // Typing the exact name of a store item links the line to it; anything else is a typed item.
   const match = (text: string) => active.find((i) => i.name.trim().toLowerCase() === text.trim().toLowerCase());
   const toLine = (l: FormLine): RequestLine => l.item_id
     ? { item_id: l.item_id, qty: Number(l.qty), ...(l.by_piece && canSplit(item(l.item_id) ?? { pack_qty: null }) ? { by_piece: true } : {}) }
-    : { item_id: '', qty: Number(l.qty), name: l.text, unit: l.unit, ...(l.cost ? { unit_cost: Number(l.cost) } : {}) };
+    : { item_id: '', qty: Number(l.qty), name: l.text, unit: l.unit, ...(l.cost ? { unit_cost: Number(l.cost) } : {}), ...(Number(l.pack) > 1 ? { pack_qty: Number(l.pack) } : {}) };
   const total = lines.reduce((s, l) => s + (l.qty && (l.item_id || l.text.trim()) ? lineAmount(toLine(l), data.items) : 0), 0);
   const setLine = (idx: number, patch: Partial<FormLine>) => setLines(lines.map((x, i) => (i === idx ? { ...x, ...patch } : x)));
   return (
@@ -179,7 +165,7 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
       })}>Submit for approval</Button>
     </>}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Training" required hint="Not in the list? Choose “+ New training” and type its name."><TrainingPicker value={batchId} onChange={setBatchId} batches={batches} required /></Field>
+        <Field label="Training" required hint="Type to search, or type a new name to add it."><TrainingPicker value={batchId} onChange={setBatchId} batches={batches} required /></Field>
         <Field label="Purpose"><input className="input" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Day 1–3 refreshments for 30 trainees" /></Field>
         <Field label="Remarks" className="sm:col-span-2"><textarea className="input min-h-24" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Details for the HOD: number of trainees, delivery date, sizes, special instructions…" /></Field>
         <Field label="Attachment (Excel list, etc.)" className="sm:col-span-2" hint="Excel, CSV, PDF or photo">
@@ -229,16 +215,27 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
                   <button className="rounded p-2 text-slate-500 hover:bg-silver-100" onClick={() => setLines(lines.filter((_, i) => i !== idx))} aria-label="Remove line" disabled={lines.length === 1}><Trash2 className="h-4 w-4" /></button>
                 </div>
                 {it && (
-                  <p className={cx('mt-1 px-1 text-xs', over || it.qty_on_hand <= 0 ? 'font-medium text-kbz-red' : 'text-emerald-700')}>
-                    {it.qty_on_hand <= 0 ? 'Store item · out of stock (record a Stock in first)' : over ? `Store item · only ${max} available` : `Store item · ${fmtQty(it, it.qty_on_hand)} available`}
-                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 px-1 text-xs">
+                    <span className={cx(over || it.qty_on_hand <= 0 ? 'font-medium text-kbz-red' : 'text-emerald-700')}>
+                      {it.qty_on_hand <= 0 ? 'Store item · out of stock (record a Stock in first)' : over ? `Store item · only ${max} available` : `Store item · ${fmtQty(it, it.qty_on_hand)} available`}
+                    </span>
+                    <span className="text-slate-500">Unit: <b className="text-slate-700">{it.unit}{split ? ` of ${it.pack_qty} ${it.piece_unit || 'piece'}s` : ''}</b></span>
+                    <span className="text-slate-500">Price: <b className="text-slate-700">{num(it.unit_cost)} MMK / {it.unit}</b></span>
+                    {split && <span className="text-slate-500">Per {it.piece_unit || 'piece'}: <b className="text-slate-700">{(Math.round((it.unit_cost / it.pack_qty!) * 100) / 100).toLocaleString('en-US')} MMK</b></span>}
+                    {l.qty && <span className="ml-auto text-slate-500">Amount: <b className="text-kbz-blue">{num(Math.round(lineAmount(toLine(l), data.items)))} MMK</b></span>}
+                  </div>
                 )}
                 {typed && (
-                  <div className="mt-1 flex flex-wrap items-center gap-2 px-1 text-xs text-slate-500">
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-slate-500">
                     <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">Not in store</span>
-                    <label className="flex items-center gap-1.5">Estimated cost / unit
-                      <input className="input w-28 py-1 text-right" type="number" min="0" value={l.cost} onChange={(e) => setLine(idx, { cost: e.target.value })} placeholder="MMK" aria-label="Estimated cost per unit" />
+                    <label className="flex items-center gap-1.5">Price / {l.unit.trim() || 'unit'}
+                      <input className="input w-28 py-1 text-right" type="number" min="0" value={l.cost} onChange={(e) => setLine(idx, { cost: e.target.value })} placeholder="MMK" aria-label="Price per unit" />
                     </label>
+                    <label className="flex items-center gap-1.5">Pieces in one {l.unit.trim() || 'unit'}
+                      <input className="input w-20 py-1 text-right" type="number" min="2" step="1" value={l.pack} onChange={(e) => setLine(idx, { pack: e.target.value })} placeholder="opt." aria-label="Pieces in one unit" />
+                    </label>
+                    {Number(l.pack) > 1 && Number(l.cost) > 0 && <span>Per piece: <b className="text-slate-700">{(Math.round((Number(l.cost) / Number(l.pack)) * 100) / 100).toLocaleString('en-US')} MMK</b></span>}
+                    {l.qty && Number(l.cost) > 0 && <span className="ml-auto">Amount: <b className="text-kbz-blue">{num(Math.round(Number(l.qty) * Number(l.cost)))} MMK</b></span>}
                   </div>
                 )}
               </div>
