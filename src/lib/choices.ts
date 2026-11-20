@@ -18,3 +18,6 @@ export const tidyChoice = (value: string, options: readonly string[]) => {
   const v = value.trim().replace(/\s+/g, ' ');
   return options.find((o) => o.toLowerCase() === v.toLowerCase()) ?? v;
 };
+
+/** Common units offered as suggestions; any other unit can be typed. */
+export const COMMON_UNITS = ['pcs', 'box', 'pack', 'bottle', 'carton', 'set', 'ream', 'bag', 'kg', 'dozen'] as const;

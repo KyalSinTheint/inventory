@@ -13,7 +13,7 @@ import { canSplit, fmtPieces, fmtQty, fmtTxnQty, piecePrice, piecesIn, r6 } from
 import { CLASSIFICATIONS, TXN_LABELS, type Category, type CountLine, type Item, type ReturnCondition } from '../lib/types';
 import { date, dateTime, mmk, monthEnd, monthLabel, num, thisMonth } from '../lib/format';
 import { Badge, Button, cx, Empty, ErrorNote, Field, Modal, PageHeader, SearchBox, StatusBadge, Tabs, useSubmit, useToast } from '../components/ui';
-import { categoriesOf, tidyChoice } from '../lib/choices';
+import { COMMON_UNITS, categoriesOf, tidyChoice } from '../lib/choices';
 import { ComboInput } from '../components/ComboInput';
 
 type Tab = 'items' | 'txns' | 'count';
@@ -710,7 +710,7 @@ function ItemModal({ item, onClose, initialGroup }: { item?: Item; onClose: () =
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Unit (ယူနစ်)" required hint="Pack, Box, Bottle, Piece…"><input className="input" value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} aria-label="Unit" /></Field>
+        <Field label="Unit (ယူနစ်)" required hint="box၊ pack၊ pcs… choose or type"><ComboInput value={f.unit} onChange={(v) => setF({ ...f, unit: v })} options={COMMON_UNITS} placeholder="box၊ pack၊ pcs…" label="Unit" /></Field>
         <Field label="Name" required className="sm:col-span-2"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         <Field label="Category" hint="Choose, or type a new category"><ComboInput value={f.category} onChange={(v) => setF({ ...f, category: v })} options={categories} label="Category" /></Field>
         <Field label="Main item" hint="The card it appears under. Empty = chosen from the name; a new name makes a new card.">

@@ -12,7 +12,8 @@ import { EXCEL_ACCEPT } from '../lib/files';
 import { Button, cx, Empty, ErrorNote, Field, Modal, PageHeader, useSubmit, useToast } from '../components/ui';
 import { TrainingPicker, useTrainingDraft } from '../components/TrainingPicker';
 import { RequestLinesTable } from '../components/RequestLines';
-import { categoriesOf } from '../lib/choices';
+import { COMMON_UNITS, categoriesOf } from '../lib/choices';
+import { ComboInput } from '../components/ComboInput';
 
 export default function RequestsPage() {
   const { data, can } = useData();
@@ -226,7 +227,7 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
                       ))}
                     </div>
                   ) : <span className="self-center text-sm text-slate-500">{it.unit}</span>)}
-                  {typed && <input className="input w-36" value={l.unit} onChange={(e) => setLine(idx, { unit: e.target.value })} placeholder="ယူနစ်" aria-label="Unit" title="ယူနစ် – ဘူး၊ ထုပ်၊ ခု စသဖြင့်" />}
+                  {typed && <div className="w-40" title="ယူနစ် – box၊ pack၊ pcs… (ဘူး၊ ထုပ်၊ ခု)"><ComboInput value={l.unit} onChange={(v) => setLine(idx, { unit: v })} options={COMMON_UNITS} placeholder="box၊ pack၊ pcs…" label="Unit" /></div>}
                   <button className="rounded p-2 text-slate-500 hover:bg-silver-100" onClick={() => setLines(lines.filter((_, i) => i !== idx))} aria-label="Remove line" disabled={lines.length === 1}><Trash2 className="h-4 w-4" /></button>
                 </div>
                 {it && (
