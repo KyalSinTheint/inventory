@@ -25,6 +25,16 @@ export interface DataAdapter {
   signIn(email: string, password: string): Promise<void>;
   signUp(name: string, email: string, password: string): Promise<void>;
   signOut(): Promise<void>;
+  /** True until the first System Administrator account exists (Supabase only). */
+  needsSetup(): Promise<boolean>;
+  /** First-time setup: creates the System Administrator login (only while none exists). */
+  setupFirstAdmin(name: string, email: string, password: string): Promise<void>;
+  /** Administrator creates a ready-to-use login; returns the new profile id. */
+  createLogin(name: string, email: string, password: string, role: Profile['role']): Promise<string>;
+  /** Administrator sets a new password for someone. */
+  setPassword(userId: string, password: string): Promise<void>;
+  /** The signed-in person changes their own password. */
+  changeOwnPassword(password: string): Promise<void>;
   /** Demo mode only: sign in as a seeded user without a password. */
   demoSignIn?(userId: string): void;
   resetDemo?(): void;
@@ -120,6 +130,11 @@ export function demoAdapter(): DataAdapter {
       localStorage.setItem(USER_KEY, p.id);
     },
     async signUp() { throw new Error('Sign-up is not available in demo mode. Pick a demo user instead.'); },
+    async needsSetup() { return false; },
+    async setupFirstAdmin() { throw new Error('Not used in demo mode.'); },
+    async createLogin() { throw new Error('Not used in demo mode.'); },
+    async setPassword() { /* demo users have no password */ },
+    async changeOwnPassword() { /* demo users have no password */ },
     async signOut() { localStorage.removeItem(USER_KEY); },
     demoSignIn(id) { localStorage.setItem(USER_KEY, id); },
     resetDemo() { localStorage.removeItem(STORE_KEY); data = readStore(); },
@@ -131,6 +146,7 @@ const BUCKET = 'attachments';
 const PAGE = 1000;
 
 function friendly(msg: string): string {
+  if (/Could not find the function|schema cache/i.test(msg)) return 'The database needs the latest update: run supabase_setup_all.sql in Supabase → SQL Editor, then reload.';
   if (msg.includes('items_qty_on_hand_check')) return 'Not enough stock: this would make the balance negative.';
   if (msg.includes('row-level security') || msg.includes('0 rows') || msg.includes('JSON object requested')) return 'You do not have permission to do this (or the record changed). Reload and try again.';
   return msg;
@@ -225,6 +241,29 @@ export function supabaseAdapter(url: string, key: string): DataAdapter {
       if (error) throw new Error(error.message);
     },
     async signOut() { await sb.auth.signOut(); },
+    async needsSetup() {
+      const { data, error } = await sb.rpc('portal_needs_setup');
+      if (error) throw new Error(friendly(error.message));
+      return data === true;
+    },
+    async setupFirstAdmin(name, email, password) {
+      const { error } = await sb.rpc('setup_first_admin', { p_email: email, p_password: password, p_name: name });
+      if (error) throw new Error(friendly(error.message));
+      await this.signIn(email, password);
+    },
+    async createLogin(name, email, password, role) {
+      const { data, error } = await sb.rpc('admin_create_user', { p_email: email, p_password: password, p_name: name, p_role: role });
+      if (error) throw new Error(friendly(error.message));
+      return data as string;
+    },
+    async setPassword(userId, password) {
+      const { error } = await sb.rpc('admin_set_password', { p_user: userId, p_password: password });
+      if (error) throw new Error(friendly(error.message));
+    },
+    async changeOwnPassword(password) {
+      const { error } = await sb.auth.updateUser({ password });
+      if (error) throw new Error(error.message);
+    },
   };
 }
 

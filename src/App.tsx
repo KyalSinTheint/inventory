@@ -3,11 +3,12 @@ import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation, useNaviga
 import {
   ArrowLeft, BarChart3, Bell, Boxes, CheckSquare, ClipboardList, FileText, GraduationCap, LayoutDashboard, Lock, LogOut, PiggyBank,
   RefreshCw, ScrollText, Settings as SettingsIcon, Users, Wallet, Wrench,
+  KeyRound,
 } from 'lucide-react';
 import { StoreProvider, useStore } from './lib/store';
 import { approvalCounts, lowStockItems, retentionAlerts } from './lib/alerts';
 import { ROLE_LABELS, type Role } from './lib/types';
-import { PageBandContext, ToastProvider, cx } from './components/ui';
+import { Button, ErrorNote, Field, Modal, PageBandContext, ToastProvider, cx, useSubmit, useToast } from './components/ui';
 import { today } from './lib/format';
 import LoginPage from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -35,6 +36,7 @@ const ROLE_DESC: Record<Role, { option: string; perm: string }> = {
 
 function Shell({ children }: { children: ReactNode }) {
   const { user, data, settings, signOut, refresh, db, demoSignIn } = useStore();
+  const [pwOpen, setPwOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [band, setBand] = useState<HTMLDivElement | null>(null);
   const loc = useLocation();
@@ -107,6 +109,10 @@ function Shell({ children }: { children: ReactNode }) {
                 <Bell className="h-4 w-4" />
                 {alertCount > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-kbz-red px-1 text-center text-[10px] font-semibold leading-4 text-white">{alertCount}</span>}
               </NavLink>
+              {db.mode === 'supabase' && (
+                <button onClick={() => setPwOpen(true)} className="rounded-lg p-2 text-slate-300 hover:bg-white/10 hover:text-white" title="Change my password" aria-label="Change my password"><KeyRound className="h-4 w-4" /></button>
+              )}
+              {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} />}
               <button onClick={signOut} className="rounded-lg p-2 text-slate-300 hover:bg-white/10 hover:text-white" title="Sign out" aria-label="Sign out"><LogOut className="h-4 w-4" /></button>
             </div>
           </div>
@@ -188,5 +194,28 @@ export default function App() {
         </StoreProvider>
       </ToastProvider>
     </BrowserRouter>
+  );
+}
+
+function ChangePassword({ onClose }: { onClose: () => void }) {
+  const { changePassword } = useStore();
+  const toast = useToast();
+  const [a, setA] = useState('');
+  const [b, setB] = useState('');
+  const { busy, error, run } = useSubmit();
+  return (
+    <Modal open onClose={onClose} title="Change my password" footer={<>
+      <Button variant="secondary" onClick={onClose}>Cancel</Button>
+      <Button busy={busy} onClick={() => run(async () => {
+        if (a !== b) throw new Error('The two passwords do not match.');
+        await changePassword(a); toast('Password changed'); onClose();
+      })}>Save password</Button>
+    </>}>
+      <div className="grid gap-3">
+        <Field label="New password" required hint="At least 8 characters."><input className="input" type="password" autoComplete="new-password" value={a} onChange={(e) => setA(e.target.value)} /></Field>
+        <Field label="Repeat new password" required><input className="input" type="password" autoComplete="new-password" value={b} onChange={(e) => setB(e.target.value)} /></Field>
+      </div>
+      <ErrorNote error={error} />
+    </Modal>
   );
 }

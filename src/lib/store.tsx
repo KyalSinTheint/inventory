@@ -23,7 +23,9 @@ interface StoreValue {
   can: (p: Permission) => boolean;
   refresh: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (name: string, email: string, password: string) => Promise<void>;
+  /** First-time setup of the System Administrator login (Supabase, only while none exists). */
+  setupFirstAdmin: (name: string, email: string, password: string) => Promise<void>;
+  changePassword: (password: string) => Promise<void>;
   demoSignIn: (id: string) => Promise<void>;
   signOut: () => Promise<void>;
   name: (userId: string | null | undefined) => string;
@@ -490,14 +492,26 @@ function makeActions(
       await audit('Update user', 'profile', id, `${saved.email}: ${JSON.stringify({ from: { role: before?.role, active: before?.active }, to: patch })}`);
       return saved;
     },
-    async addDemoUser(name: string, email: string, role: Role) {
+    /** Administrator creates a login (Supabase: written to Authentication → Users, ready to sign in). */
+    async createUser(name: string, email: string, role: Role, password: string) {
       need('users.manage');
-      if (db.mode !== 'demo') throw new RuleError('In production, users sign up themselves and you then assign a role.');
-      if (!name.trim() || !/^\S+@\S+$/.test(email)) throw new RuleError('Enter a name and a valid email.');
-      if (get().data.profiles.some((p) => p.email.toLowerCase() === email.toLowerCase())) throw new RuleError('That email already exists.');
-      const saved = await insert('profiles', { id: uid(), name: name.trim(), email: email.trim(), role, active: true, created_at: nowIso() });
-      await audit('Create user', 'profile', saved.id, `${saved.email} as ${role}`);
+      if (!name.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) throw new RuleError('Enter a name and a valid email.');
+      if (get().data.profiles.some((p) => p.email.toLowerCase() === email.trim().toLowerCase())) throw new RuleError('An account with this email already exists.');
+      if (db.mode === 'demo') {
+        const saved = await insert('profiles', { id: uid(), name: name.trim(), email: email.trim(), role, active: true, created_at: nowIso() });
+        await audit('Create user', 'profile', saved.id, `${saved.email} as ${role}`);
+        return saved;
+      }
+      if (password.length < 8) throw new RuleError('The password must be at least 8 characters.');
+      const id = await db.createLogin(name.trim(), email.trim(), password, role);
+      const [saved] = await db.listBy('profiles', 'id', id);
+      if (saved) put('profiles', saved);
       return saved;
+    },
+    async resetPassword(id: string, password: string) {
+      need('users.manage');
+      if (password.length < 8) throw new RuleError('The password must be at least 8 characters.');
+      await db.setPassword(id, password);
     },
     async saveSettings(patch: Pick<Settings, 'retention_alert_months' | 'service_term_months'>) {
       need('settings.manage');
@@ -585,7 +599,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     settings: data?.settings[0] ?? DEFAULT_SETTINGS,
     can: (p) => can(user?.role, p),
     signIn: async (e, p) => { await db.signIn(e, p); setLoading(true); await refresh(); },
-    signUp: async (n, e, p) => { await db.signUp(n, e, p); await refresh(); },
+    setupFirstAdmin: async (n, e, p) => { await db.setupFirstAdmin(n, e, p); setLoading(true); await refresh(); },
+    changePassword: async (p) => {
+      if (p.length < 8) throw new RuleError('The password must be at least 8 characters.');
+      await db.changeOwnPassword(p);
+    },
     demoSignIn: async (id) => { db.demoSignIn?.(id); setLoading(true); await refresh(); },
     signOut: async () => { await db.signOut(); setUser(null); setData(null); },
     name: (id) => data?.profiles.find((p) => p.id === id)?.name ?? (id ? 'Unknown user' : '—'),
