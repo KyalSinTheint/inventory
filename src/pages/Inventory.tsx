@@ -10,9 +10,11 @@ import { FileLink, FilePicker, Thumb, useFileUrl } from '../components/files';
 import { DOC_ACCEPT } from '../lib/files';
 import { useData } from '../lib/store';
 import { canSplit, fmtPieces, fmtQty, fmtTxnQty, piecePrice, piecesIn, r6 } from '../lib/logic';
-import { CATEGORIES, CLASSIFICATIONS, TXN_LABELS, type Category, type CountLine, type Item, type ReturnCondition } from '../lib/types';
+import { CLASSIFICATIONS, TXN_LABELS, type Category, type CountLine, type Item, type ReturnCondition } from '../lib/types';
 import { date, dateTime, mmk, monthEnd, monthLabel, num, thisMonth } from '../lib/format';
 import { Badge, Button, cx, Empty, ErrorNote, Field, Modal, PageHeader, SearchBox, StatusBadge, Tabs, useSubmit, useToast } from '../components/ui';
+import { categoriesOf, tidyChoice } from '../lib/choices';
+import { ComboInput } from '../components/ComboInput';
 
 type Tab = 'items' | 'txns' | 'count';
 
@@ -112,7 +114,7 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit, onStockIn }: {
   const { data, can } = useData();
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState('');
-  const [cat, setCat] = useState<Category | ''>((CATEGORIES as readonly string[]).includes(initialCat) ? (initialCat as Category) : '');
+  const [cat, setCat] = useState<Category | ''>(categoriesOf(data).includes(initialCat) ? initialCat : '');
   const [low, setLow] = useState(lowOnly);
   const [view, setView] = useState<'cards' | 'table'>('cards');
   const [groupModal, setGroupModal] = useState<null | { group?: ItemGroup }>(null);
@@ -128,11 +130,12 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit, onStockIn }: {
   const qtyOf = (i: Item) => moves?.get(i.id)?.closing ?? i.qty_on_hand;
   const visible = data.items.filter((i) => can('item.manage') || i.active);
   const inCat = visible.filter((i) => !cat || i.category === cat);
-  const groups = groupsFor(cat, data.item_groups).map((g) => {
+  const allCats = categoriesOf(data);
+  const groups = groupsFor(cat, data.item_groups, allCats).map((g) => {
     const list = inCat.filter((i) => groupOf(i, data.item_groups).id === g.id);
     return { g, count: list.length, low: list.filter((i) => qtyOf(i) <= i.min_level).length };
-  }).filter((x) => (x.count > 0 || x.g.custom) && (!low || x.low > 0));
-  const chosen = group === 'all' ? null : groupsFor('', data.item_groups).find((g) => g.id === group) ?? null;
+  }).filter((x) => !low || x.low > 0); // every main item card shows, even before it has items
+  const chosen = group === 'all' ? null : groupsFor('', data.item_groups, allCats).find((g) => g.id === group) ?? null;
   const manage = can('item.manage');
   const s = q.trim().toLowerCase();
   const searching = s.length > 0;
@@ -151,7 +154,7 @@ function ItemsTab({ month, lowOnly, initialCat, onEdit, onStockIn }: {
         <SearchBox value={q} onChange={setQ} placeholder="Search all items" />
         {showGroups && (
           <div className="-mx-4 flex w-[calc(100%+2rem)] gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:w-auto sm:flex-wrap sm:px-0" role="group" aria-label="Category">
-            {(['', ...CATEGORIES] as const).map((c) => (
+            {['', ...categoriesOf(data)].map((c) => (
               <button key={c || 'all'} onClick={() => setCat(c)}
                 className={cx('shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition', cat === c ? 'bg-kbz-navy text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-kbz-navy')}>
                 {c || 'All categories'}
@@ -296,7 +299,7 @@ function GroupModal({ group, defaultCategory, onClose, onDeleted }: { group?: It
         <div className="space-y-3">
           <Field label="Name" required><input className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Juice, Notebooks, Prizes" autoFocus /></Field>
           <Field label="Category" hint={group ? 'The category of an existing main item cannot change.' : undefined}>
-            <select className="input" value={category} disabled={!!group} onChange={(e) => setCategory(e.target.value as Category)}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
+            {group ? <input className="input" value={category} disabled /> : <ComboInput value={category} onChange={setCategory} options={categoriesOf(data)} label="Category" />}
           </Field>
         </div>
       </div>
@@ -551,7 +554,7 @@ function ItemPicker({ value, onChange, filter }: { value: string; onChange: (v: 
   return (
     <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="">Choose item…</option>
-      {CATEGORIES.map((c) => {
+      {categoriesOf(data).map((c) => {
         const list = data.items.filter((i) => i.category === c && i.active && (!filter || filter(i)));
         return list.length ? <optgroup key={c} label={c}>{list.map((i) => <option key={i.id} value={i.id}>{i.name} ({fmtQty(i, i.qty_on_hand)})</option>)}</optgroup> : null;
       })}
@@ -667,8 +670,11 @@ function ItemModal({ item, onClose, initialGroup }: { item?: Item; onClose: () =
     name: item?.name ?? '', category: item?.category ?? groupsFor('', data.item_groups).find((g) => g.id === initialGroup)?.category ?? ('Refreshments' as Category), classification: item?.classification ?? 'Consumable',
     unit: item?.unit ?? 'Piece', unit_cost: String(item?.unit_cost ?? ''), min_level: String(item?.min_level ?? ''), active: item?.active ?? true,
     pack_qty: item?.pack_qty ? String(item.pack_qty) : '', piece_unit: item?.piece_unit ?? '',
-    item_group: item ? groupOf(item, data.item_groups).id : initialGroup && initialGroup !== 'all' ? initialGroup : '',
+    // Main item is typed or chosen by name; a new name becomes a new main item card on save.
+    group_label: item ? groupOf(item, data.item_groups).label : initialGroup && initialGroup !== 'all' ? groupsFor('', data.item_groups, categoriesOf(data)).find((g) => g.id === initialGroup)?.label ?? '' : '',
   });
+  const categories = categoriesOf(data);
+  const groupChoices = groupsFor(tidyChoice(f.category, categories), data.item_groups);
   const { busy, error, run } = useSubmit();
   // undefined = keep current photo, null = remove, File = replace
   const [photo, setPhoto] = useState<File | null | undefined>(undefined);
@@ -676,8 +682,21 @@ function ItemModal({ item, onClose, initialGroup }: { item?: Item; onClose: () =
   return (
     <Modal open onClose={onClose} title={item ? `Edit ${item.name}` : 'New inventory item'} footer={<>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
-      <Button busy={busy} onClick={() => run(async () => { await actions.saveItem({ ...f, item_group: f.item_group || null, id: item?.id, unit_cost: Number(f.unit_cost), min_level: Number(f.min_level),
-        pack_qty: f.pack_qty.trim() ? Number(f.pack_qty) : null, piece_unit: f.piece_unit.trim() || null }, photo); toast('Item saved'); onClose(); })}>Save</Button>
+      <Button busy={busy} onClick={() => run(async () => {
+        const category = tidyChoice(f.category, categories);
+        if (!category) throw new Error('Type or choose a category.');
+        const label = f.group_label.trim();
+        let item_group: string | null = null;
+        if (label) {
+          const found = groupsFor(category, data.item_groups).find((g) => g.label.toLowerCase() === label.toLowerCase());
+          item_group = found ? found.id : (await actions.saveItemGroup({ label, category, icon: 'Package' })).id;
+        }
+        const { group_label: _ignored, ...rest } = f;
+        void _ignored;
+        await actions.saveItem({ ...rest, category, item_group, id: item?.id, unit_cost: Number(f.unit_cost), min_level: Number(f.min_level),
+          pack_qty: f.pack_qty.trim() ? Number(f.pack_qty) : null, piece_unit: f.piece_unit.trim() || null }, photo);
+        toast('Item saved'); onClose();
+      })}>Save</Button>
     </>}>
       <div className="mb-4 flex items-center gap-4">
         {preview ? <img src={preview} alt="New photo" className="h-24 w-24 rounded-lg border border-silver-200 object-cover" /> : <Thumb att={photo === null ? null : item?.photo} alt={item?.name ?? ''} size={96} />}
@@ -693,10 +712,10 @@ function ItemModal({ item, onClose, initialGroup }: { item?: Item; onClose: () =
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Unit" required><input className="input" value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} /></Field>
         <Field label="Name" required className="sm:col-span-2"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
-        <Field label="Category"><select className="input" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value as Category, item_group: '' })}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></Field>
-        <Field label="Main item" hint="The icon card it appears under"><select className="input" value={f.item_group} onChange={(e) => setF({ ...f, item_group: e.target.value })}>
-          <option value="">Choose automatically from the name</option>{groupsFor(f.category, data.item_groups).map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
-        </select></Field>
+        <Field label="Category" hint="Choose, or type a new category"><ComboInput value={f.category} onChange={(v) => setF({ ...f, category: v })} options={categories} label="Category" /></Field>
+        <Field label="Main item" hint="The card it appears under. Empty = chosen from the name; a new name makes a new card.">
+          <ComboInput value={f.group_label} onChange={(v) => setF({ ...f, group_label: v })} options={groupChoices.map((g) => g.label)} placeholder="e.g. Coffee, Tea, Notebooks" label="Main item" />
+        </Field>
         <Field label="Classification"><select className="input" value={f.classification} onChange={(e) => setF({ ...f, classification: e.target.value as Item['classification'] })}>{CLASSIFICATIONS.map((c) => <option key={c}>{c}</option>)}</select></Field>
         <Field label="Cost per unit (MMK)"><input className="input" type="number" min="0" value={f.unit_cost} onChange={(e) => setF({ ...f, unit_cost: e.target.value })} /></Field>
         <Field label="Minimum level" hint="Red alert at or below this"><input className="input" type="number" min="0" value={f.min_level} onChange={(e) => setF({ ...f, min_level: e.target.value })} /></Field>
@@ -738,7 +757,7 @@ function CountTab({ month: viewMonth }: { month: string }) {
         <div className="rounded-xl border border-silver-200 bg-white p-4">
           <div className="mb-3 flex flex-wrap items-end gap-3">
             <Field label="Count month"><input className="input" type="month" value={month} onChange={(e) => setMonth(e.target.value)} /></Field>
-            <Field label="Category"><select className="input" value={cat} onChange={(e) => { setCat(e.target.value as Category); setCounted({}); }}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></Field>
+            <Field label="Category"><select className="input" value={cat} onChange={(e) => { setCat(e.target.value as Category); setCounted({}); }}>{categoriesOf(data).map((c) => <option key={c}>{c}</option>)}</select></Field>
             <Button variant="secondary" onClick={() => setCounted(Object.fromEntries(items.map((i) => [i.id, String(sysCount(i))])))}>Fill with system qty</Button>
           </div>
           <div className="table-wrap">

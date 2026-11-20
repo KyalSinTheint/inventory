@@ -10,8 +10,10 @@ alter table public.material_requests add column if not exists remarks text not n
 
 -- ------------------------------------------------------------------ batches: programs and branch
 alter table public.batches drop constraint if exists batches_program_check;
+-- NOT VALID: when the migrations run again, trainings with programs people typed (allowed since
+-- 20261126000000, which drops this check) must not stop the run.
 alter table public.batches add constraint batches_program_check
-  check (program in ('License', 'YCP', 'Product & Soft Skills', 'Corporate', 'Agency'));
+  check (program in ('License', 'YCP', 'Product & Soft Skills', 'Corporate', 'Agency')) not valid;
 alter table public.batches add column if not exists location text;
 alter table public.batches drop constraint if exists batches_location_check;
 alter table public.batches add constraint batches_location_check check (location is null or location in ('YGN', 'MDY', 'TGI'));

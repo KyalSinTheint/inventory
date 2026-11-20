@@ -3,6 +3,7 @@ import type {
   ApprovalStatus, Batch, BudgetCategory, Deposit, DepositStatus, Expense, ForfeitReason, Item, MaterialRequest,
   RequestLine, Role, StockTxn,
 } from './types';
+import { BUDGET_CATEGORIES } from './types';
 
 export class RuleError extends Error {}
 
@@ -386,7 +387,8 @@ export function requestValue(r: MaterialRequest, items: Item[]): number {
 export function budgetCategory(b: Pick<Batch, 'program' | 'location'> | undefined | null): BudgetCategory {
   if (!b) return 'General';
   if (b.program === 'License') return b.location ? (`License - ${b.location}` as BudgetCategory) : 'General';
-  return b.program;
+  // Programs people typed themselves are budgeted under General.
+  return (BUDGET_CATEGORIES as readonly string[]).includes(b.program) ? (b.program as BudgetCategory) : 'General';
 }
 
 const effectiveDate = (t: StockTxn) => (t.decided_at ?? t.created_at).slice(0, 10);

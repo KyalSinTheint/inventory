@@ -5,9 +5,10 @@ import { useData } from '../lib/store';
 import { approvalCounts, lowStockItems, retentionAlerts } from '../lib/alerts';
 import { actsAsHod, depositTotals, fmtQty, utilizationPct, yearActual } from '../lib/logic';
 import { date, mmk, num, today } from '../lib/format';
-import { CATEGORIES, ROLE_LABELS } from '../lib/types';
+import { ROLE_LABELS } from '../lib/types';
 import { PageHeader, cx } from '../components/ui';
 import { CaseArt, LayersArt, OrbArt, PanesArt, WaveOrbArt, WindowArt } from '../components/Illustrations';
+import { categoriesOf } from '../lib/choices';
 
 export default function Dashboard() {
   const { data, user, settings, can } = useData();
@@ -112,7 +113,7 @@ export default function Dashboard() {
 
       {/* Inventory categories as quiet chips */}
       <nav aria-label="Inventory categories" className="mt-6 flex flex-wrap gap-2">
-        {CATEGORIES.map((c) => {
+        {categoriesOf(data).map((c) => {
           const items = data.items.filter((i) => i.active && i.category === c);
           const lowN = items.filter((i) => i.qty_on_hand <= i.min_level).length;
           return (

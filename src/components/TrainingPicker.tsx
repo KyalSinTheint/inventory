@@ -1,9 +1,11 @@
 import { useEffect, useId, useState } from 'react';
 import { Check } from 'lucide-react';
 import { useData } from '../lib/store';
-import { LOCATIONS, LOCATION_LABELS, PROGRAMS, type Batch, type Location, type Program } from '../lib/types';
+import { LOCATIONS, LOCATION_LABELS, type Batch, type Location, type Program } from '../lib/types';
 import { date, today } from '../lib/format';
 import { Button, ErrorNote, useSubmit, useToast } from './ui';
+import { programsOf, tidyChoice } from '../lib/choices';
+import { ComboInput } from './ComboInput';
 
 /**
  * Type a training name, or pick one of the existing trainings from the list that appears as you type.
@@ -28,7 +30,7 @@ export function TrainingPicker({ value, onChange, batches, program, none, requir
   const [text, setText] = useState(() => nameOf(value));
   const [f, setF] = useState({ program: program ?? ('Product & Soft Skills' as Program), location: 'YGN' as Location, start_date: today(), end_date: '' });
   const { busy, error, run } = useSubmit();
-  const prog = program ?? f.program;
+  const prog = program ?? tidyChoice(f.program, programsOf(data));
   const list = [...batches].sort((a, b) => (b.start_date ?? '').localeCompare(a.start_date ?? ''));
   const match = (t: string) => batches.find((b) => b.name.trim().toLowerCase() === t.trim().toLowerCase());
 
@@ -64,9 +66,7 @@ export function TrainingPicker({ value, onChange, batches, program, none, requir
           {(!program || prog === 'License') && (
             <div className="mt-2 flex gap-2">
               {!program && (
-                <select className="input min-w-0 flex-1" value={f.program} onChange={(e) => setF({ ...f, program: e.target.value as Program })} aria-label="Program">
-                  {PROGRAMS.map((p) => <option key={p}>{p}</option>)}
-                </select>
+                <div className="min-w-0 flex-1"><ComboInput value={f.program} onChange={(v) => setF({ ...f, program: v })} options={programsOf(data)} placeholder="Program (type or choose)" label="Program" /></div>
               )}
               {prog === 'License' && (
                 <select className="input min-w-0 flex-1" value={f.location} onChange={(e) => setF({ ...f, location: e.target.value as Location })} aria-label="Branch">

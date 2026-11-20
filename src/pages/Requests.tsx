@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { ClipboardList, Pencil, Plus, Trash2 } from 'lucide-react';
 import { GlassArea, notchMask } from '../components/glass';
 import { useData } from '../lib/store';
-import { CATEGORIES, type MaterialRequest, type RequestLine } from '../lib/types';
+import { type MaterialRequest, type RequestLine } from '../lib/types';
 import { canSplit, fmtPieces, fmtQty, lineAmount, linePieces, piecesIn, requestValue } from '../lib/logic';
 import { date, mmk, monthLabel, num } from '../lib/format';
 import { MonthBar, useMonthParam } from '../components/MonthBar';
@@ -12,6 +12,7 @@ import { EXCEL_ACCEPT } from '../lib/files';
 import { Button, cx, Empty, ErrorNote, Field, Modal, PageHeader, useSubmit, useToast } from '../components/ui';
 import { TrainingPicker } from '../components/TrainingPicker';
 import { RequestLinesTable } from '../components/RequestLines';
+import { categoriesOf } from '../lib/choices';
 
 export default function RequestsPage() {
   const { data, can } = useData();
@@ -101,12 +102,23 @@ function RequestTicket({ r, onOpen }: { r: MaterialRequest; onOpen: () => void }
 }
 
 function RequestDetail({ r, onClose, onRevise }: { r: MaterialRequest; onClose: () => void; onRevise: () => void }) {
-  const { data, can, name } = useData();
+  const { data, can, name, user, actions } = useData();
+  const toast = useToast();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const del = useSubmit();
+  const mine = r.created_by === user.id && r.status !== 'Approved';
   const b = data.batches.find((x) => x.id === r.batch_id);
   const pill = STATUS_PILL[r.status];
   return (
     <Modal wide open onClose={onClose} title={`Material request · ${b?.name ?? ''}`} footer={<>
-      {r.status === 'Rejected' && can('request.create') && <Button variant="secondary" className="mr-auto" onClick={onRevise}><Pencil className="h-4 w-4" />Revise &amp; resubmit</Button>}
+      {mine && (confirmDelete ? (
+        <span className="mr-auto flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-kbz-red">Delete this request?</span>
+          <Button size="sm" variant="danger" busy={del.busy} onClick={() => del.run(async () => { await actions.deleteRequest(r.id); toast('Request deleted (kept in the audit log)'); onClose(); })}><Trash2 className="h-4 w-4" />Yes, delete</Button>
+          <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>No</Button>
+        </span>
+      ) : <Button variant="ghost" className="text-kbz-red" onClick={() => setConfirmDelete(true)}><Trash2 className="h-4 w-4" />Delete</Button>)}
+      {r.status === 'Rejected' && can('request.create') && <Button variant="secondary" className={mine ? undefined : 'mr-auto'} onClick={onRevise}><Pencil className="h-4 w-4" />Revise &amp; resubmit</Button>}
       <Button onClick={onClose}>Close</Button>
     </>}>
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -124,6 +136,7 @@ function RequestDetail({ r, onClose, onRevise }: { r: MaterialRequest; onClose: 
       {r.attachment && <div className="mt-3 text-sm"><FileLink att={r.attachment} /></div>}
       <h4 className="mb-2 mt-5 text-sm font-bold text-kbz-dark">Items</h4>
       <RequestLinesTable lines={r.lines} items={data.items} pending={r.status === 'Pending'} />
+      <ErrorNote error={del.error} />
     </Modal>
   );
 }
@@ -178,7 +191,7 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
         <h4 className="text-sm font-semibold text-kbz-dark">Items</h4>
         <p className="mb-2 text-xs text-slate-500">Type any item, or pick one from the store list that appears as you type. Typed items that are not in the store are approved without taking stock.</p>
         <datalist id="store-items">
-          {CATEGORIES.flatMap((c) => active.filter((i) => i.category === c).map((i) => (
+          {categoriesOf(data).flatMap((c) => active.filter((i) => i.category === c).map((i) => (
             <option key={i.id} value={i.name}>{i.qty_on_hand > 0 ? `${fmtQty(i, i.qty_on_hand)} in store` : 'out of stock'}</option>
           )))}
         </datalist>

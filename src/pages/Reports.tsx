@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { FileSpreadsheet, FileText } from 'lucide-react';
 import { useData } from '../lib/store';
-import { CATEGORIES, DEPOSIT_STATUSES } from '../lib/types';
+import { DEPOSIT_STATUSES } from '../lib/types';
 import { exportExcel, exportPdf, type ReportSpec } from '../lib/export';
 import { monthEnd, monthLabel, today } from '../lib/format';
 import { Button, Card, ErrorNote, Field, PageHeader } from '../components/ui';
 import { assetReport, depositMasterReport, forfeitureReport, stockMovementReport, varianceReport } from './reportSpecs';
+import { categoriesOf } from '../lib/choices';
 
 const firstOfMonth = () => today().slice(0, 8) + '01';
 const startOfYear = () => `${new Date().getFullYear()}-01-01`;
@@ -53,7 +54,7 @@ export default function ReportsPage() {
           <div className="grid gap-3 sm:grid-cols-3">
             <Field label="From"><input className="input" type="date" value={stock.from} onChange={(e) => setStock({ ...stock, from: e.target.value })} /></Field>
             <Field label="To"><input className="input" type="date" value={stock.to} onChange={(e) => setStock({ ...stock, to: e.target.value })} /></Field>
-            <Field label="Category"><select className="input" value={stock.category} onChange={(e) => setStock({ ...stock, category: e.target.value })}><option value="">All</option>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></Field>
+            <Field label="Category"><select className="input" value={stock.category} onChange={(e) => setStock({ ...stock, category: e.target.value })}><option value="">All</option>{categoriesOf(data).map((c) => <option key={c}>{c}</option>)}</select></Field>
           </div>
         </Card>
         <Card title="2. License class deposit master" actions={btns('dep', () => depositMasterReport(data, data.deposits.filter((d) => (!dep.status || d.status === dep.status) && (!dep.batch || d.batch_id === dep.batch) && (!month || d.payment_date.startsWith(month))), user.name) as never)}>

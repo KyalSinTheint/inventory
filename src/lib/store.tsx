@@ -3,9 +3,10 @@ import { createAdapter, type DataAdapter } from './db';
 import { compressImage } from './files';
 import { BUILTIN_IDS, groupOf, groupsFor, guessGroup, ICONS } from './itemGroups';
 import {
-  applyDelta, budgetCategory, can, canSplit, checkAvailability, fmtPieces, fmtQty, linePieces, pieceChange, piecesIn, r6, depositTransition, isCustomLine, isValidNrc, nextRef, validateTrainingDates, normalizeNrc, RuleError, stockDelta, validateLines, validateNewDeposit,
+  applyDelta, budgetCategory, can, canSplit, checkAvailability, fmtPieces, fmtQty, linePieces, pieceChange, piecesIn, r6, depositTransition, isCustomLine, isValidNrc, lineName, lineQtyText, nextRef, validateTrainingDates, normalizeNrc, RuleError, stockDelta, validateLines, validateNewDeposit,
   type DepositAction, type Permission,
 } from './logic';
+import { categoriesOf, programsOf, tidyChoice } from './choices';
 import type {
   Asset, AssetAction, AssetCondition, Attachment, Batch, Budget, Category, CountLine, DataSet, Deposit, Expense, Item, MaterialRequest, PhysicalCount, Profile, RequestLine, ReturnCondition, Role, Settings, StockTxn, TableName, Tables,
 } from './types';
@@ -110,6 +111,8 @@ function makeActions(
     async saveItem(input: Omit<Item, 'id' | 'created_at' | 'qty_on_hand' | 'photo' | 'code'> & { id?: string; code?: string }, photo?: File | null) {
       need('item.manage');
       if (!input.name.trim()) throw new RuleError('Item name is required.');
+      input = { ...input, category: tidyChoice(input.category, categoriesOf(get().data)) };
+      if (!input.category) throw new RuleError('Type or choose a category.');
       // Codes are no longer shown or typed; keep an existing one, otherwise assign the next one for the category.
       const existingItem = input.id ? get().data.items.find((i) => i.id === input.id) : undefined;
       const prefix = ({ Refreshments: 'RF', 'Training Materials': 'TM', 'YCP Program': 'YCP', 'Office Supplies': 'OS' } as Record<string, string>)[input.category] ?? 'IT';
@@ -139,6 +142,8 @@ function makeActions(
       need('item.manage');
       const label = input.label.trim();
       if (!label) throw new RuleError('Main item name is required.');
+      input = { ...input, category: tidyChoice(input.category, categoriesOf(get().data)) };
+      if (!input.category) throw new RuleError('Type or choose a category.');
       if (!ICONS[input.icon]) throw new RuleError('Choose an icon.');
       const clash = groupsFor(input.category, get().data.item_groups).find((g) => g.label.toLowerCase() === label.toLowerCase() && g.id !== input.id);
       if (clash) throw new RuleError(`"${label}" already exists in ${input.category}.`);
@@ -171,6 +176,8 @@ function makeActions(
       // Anyone who makes requests may add a new training by name; editing stays with HOD / Admin.
       need(input.id ? 'batch.manage' : 'batch.create');
       if (!input.name.trim()) throw new RuleError('Training name is required.');
+      input = { ...input, program: tidyChoice(input.program, programsOf(get().data)) };
+      if (!input.program) throw new RuleError('Type or choose a program.');
       if (!input.id && !can(get().user.role, 'batch.manage') && input.budget > 0) throw new RuleError('Only HOD / Admin set a training budget.');
       // Dates: the database needs a real date or nothing, never an empty string.
       input = { ...input, start_date: input.start_date || new Date().toISOString().slice(0, 10), end_date: (input.end_date || null) as never };
@@ -307,6 +314,19 @@ function makeActions(
       await audit('Create', 'material_request', saved.id, `${saved.ref} (${lines.length} lines)`);
       return saved;
     },
+    /** The requester withdraws their own request (waiting or rejected). The audit log keeps what it held. */
+    async deleteRequest(id: string) {
+      const r = get().data.material_requests.find((x) => x.id === id);
+      if (!r) throw new RuleError('Request not found.');
+      if (r.created_by !== get().user.id) throw new RuleError('Only the person who made a request can delete it.');
+      if (r.status === 'Approved') throw new RuleError('An approved request has already issued stock and cannot be deleted.');
+      const items = get().data.items;
+      const training = get().data.batches.find((b) => b.id === r.batch_id)?.name ?? '';
+      const summary = r.lines.map((l) => `${lineName(l, items)} × ${lineQtyText(l, items)}`).join(', ');
+      await db.remove('material_requests', id);
+      set((d) => ({ ...d, material_requests: d.material_requests.filter((x) => x.id !== id) }));
+      await audit('Delete', 'material_request', id, `${r.ref} (${r.status}) for ${training}: ${summary}${r.purpose ? ` · ${r.purpose}` : ''}`);
+    },
     async decideRequest(id: string, approve: boolean, note: string) {
       need('approve');
       const r = get().data.material_requests.find((x) => x.id === id);
@@ -430,6 +450,8 @@ function makeActions(
     async registerAsset(input: Omit<Asset, 'id' | 'asset_tag' | 'created_at' | 'status' | 'holder' | 'batch_id'>) {
       need('asset.record');
       if (!input.name.trim() || !input.serial_no.trim()) throw new RuleError('Asset name and serial number are required.');
+      input = { ...input, category: tidyChoice(input.category, categoriesOf(get().data)) };
+      if (!input.category) throw new RuleError('Type or choose a category.');
       const assets = get().data.assets;
       if (assets.some((a) => a.serial_no.toLowerCase() === input.serial_no.trim().toLowerCase())) throw new RuleError('That serial number is already registered.');
       const max = assets.reduce((m, a) => Math.max(m, parseInt(a.asset_tag.replace(/\D/g, ''), 10) || 0), 0);

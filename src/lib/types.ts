@@ -16,8 +16,9 @@ export interface Profile {
   created_at: string;
 }
 
+/** The standard inventory categories; people may also type their own (see categoriesOf). */
 export const CATEGORIES = ['Refreshments', 'Training Materials', 'YCP Program', 'Office Supplies'] as const;
-export type Category = (typeof CATEGORIES)[number];
+export type Category = string;
 
 export const CLASSIFICATIONS = ['Consumable', 'Reusable Asset', 'Merchandise'] as const;
 export type Classification = (typeof CLASSIFICATIONS)[number];
@@ -54,8 +55,9 @@ export interface ItemGroupRow {
   created_at: string;
 }
 
+/** The standard training programs; people may also type their own (see programsOf). */
 export const PROGRAMS = ['License', 'YCP', 'Product & Soft Skills', 'Corporate', 'Agency'] as const;
-export type Program = (typeof PROGRAMS)[number];
+export type Program = string;
 
 export const LOCATIONS = ['YGN', 'MDY', 'TGI'] as const;
 export type Location = (typeof LOCATIONS)[number];

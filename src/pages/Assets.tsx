@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
 import { History, Plus } from 'lucide-react';
 import { useData } from '../lib/store';
-import { CATEGORIES, type Asset, type AssetAction, type AssetCondition, type Category } from '../lib/types';
+import { type Asset, type AssetAction, type AssetCondition, type Category } from '../lib/types';
 import { date, dateTime, mmk, monthLabel, num, today } from '../lib/format';
 import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { Button, Empty, ErrorNote, Field, Modal, PageHeader, SearchBox, StatusBadge, useSubmit, useToast } from '../components/ui';
 import { TrainingPicker } from '../components/TrainingPicker';
+import { categoriesOf } from '../lib/choices';
+import { ComboInput } from '../components/ComboInput';
 
 const NEXT: Record<Asset['status'], AssetAction[]> = {
   Available: ['Check Out', 'Maintenance Start', 'Reported Damaged', 'Reported Lost', 'Retired'],
@@ -78,7 +80,7 @@ export default function AssetsPage() {
 }
 
 function NewAsset({ onClose }: { onClose: () => void }) {
-  const { actions } = useData();
+  const { data, actions } = useData();
   const toast = useToast();
   const [f, setF] = useState({ name: '', serial_no: '', category: 'Training Materials' as Category, purchase_date: today(), cost: '', condition: 'Good' as AssetCondition, location: 'L&D Store Room' });
   const { busy, error, run } = useSubmit();
@@ -90,7 +92,7 @@ function NewAsset({ onClose }: { onClose: () => void }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Asset name" required className="sm:col-span-2"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="e.g. Flipchart Stand" /></Field>
         <Field label="Serial number" required><input className="input" value={f.serial_no} onChange={(e) => setF({ ...f, serial_no: e.target.value })} /></Field>
-        <Field label="Category"><select className="input" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value as Category })}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></Field>
+        <Field label="Category"><ComboInput value={f.category} onChange={(v) => setF({ ...f, category: v as Category })} options={categoriesOf(data)} label="Category" /></Field>
         <Field label="Purchase date"><input className="input" type="date" value={f.purchase_date} onChange={(e) => setF({ ...f, purchase_date: e.target.value })} /></Field>
         <Field label="Cost (MMK)"><input className="input" type="number" min="0" value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value })} /></Field>
         <Field label="Condition"><select className="input" value={f.condition} onChange={(e) => setF({ ...f, condition: e.target.value as AssetCondition })}><option>Good</option><option>Fair</option><option>Damaged</option></select></Field>

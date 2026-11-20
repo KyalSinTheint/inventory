@@ -51,7 +51,7 @@ const BUILTIN: Builtin[] = [
 ];
 
 // Where an item goes when nothing matches its name.
-const FALLBACK: Record<Category, Builtin> = {
+const FALLBACK: Record<string, Builtin> = {
   Refreshments: { id: 'other-refreshments', label: 'Other Refreshments', category: 'Refreshments', iconName: 'Package', keywords: [] },
   'Training Materials': { id: 'other-training', label: 'Other Materials', category: 'Training Materials', iconName: 'Package', keywords: [] },
   'YCP Program': BUILTIN.find((b) => b.id === 'merch')!,
@@ -60,10 +60,18 @@ const FALLBACK: Record<Category, Builtin> = {
 
 export const BUILTIN_IDS = new Set([...BUILTIN, ...Object.values(FALLBACK)].map((b) => b.id));
 
+/** Catch-all main item for a category: the built-in one, or a plain card named after a category people typed. */
+function fallbackFor(category: Category): Builtin {
+  return FALLBACK[category] ?? { id: `cat:${category}`, label: category, category, iconName: 'Package', keywords: [] } as Builtin;
+}
+const isBase = (c: string) => c in FALLBACK;
+
 /** All main items for a category ('' = every category): built-ins (with saved name / icon changes) then custom ones. */
-export function groupsFor(category: Category | '', saved: ItemGroupRow[] = []): ItemGroup[] {
+export function groupsFor(category: Category | '', saved: ItemGroupRow[] = [], extraCategories: string[] = []): ItemGroup[] {
   const byId = new Map(saved.map((r) => [r.id, r]));
-  const fallbacks = Object.values(FALLBACK).filter((f) => !BUILTIN.includes(f));
+  // Categories people typed get a plain catch-all card of their own.
+  const typedCats = [...new Set([...(category ? [category] : extraCategories), ...saved.map((r) => r.category)])].filter((c) => c && !isBase(c));
+  const fallbacks = [...Object.values(FALLBACK).filter((f) => !BUILTIN.includes(f)), ...typedCats.map(fallbackFor)];
   const builtins = [...BUILTIN, ...fallbacks].filter((b) => !category || b.category === category).map((b): ItemGroup => {
     const o = byId.get(b.id);
     const iconName = o?.icon || b.iconName;
@@ -78,7 +86,7 @@ export function groupsFor(category: Category | '', saved: ItemGroupRow[] = []): 
 /** Best guess of the main item from the name, within the item's category (built-in groups only). */
 export function guessGroup(name: string, category: Category): string {
   const n = name.toLowerCase();
-  return BUILTIN.find((g) => g.category === category && g.keywords.some((k) => n.includes(k)))?.id ?? FALLBACK[category].id;
+  return BUILTIN.find((g) => g.category === category && g.keywords.some((k) => n.includes(k)))?.id ?? fallbackFor(category).id;
 }
 
 export function groupOf(item: Pick<Item, 'name' | 'category' | 'item_group'>, saved: ItemGroupRow[] = []): ItemGroup {

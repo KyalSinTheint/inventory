@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Pencil, Plus } from 'lucide-react';
 import { useData } from '../lib/store';
-import { LOCATIONS, LOCATION_LABELS, PROGRAMS, type Batch, type BatchStatus, type Location, type Program } from '../lib/types';
+import { LOCATIONS, LOCATION_LABELS, type Batch, type BatchStatus, type Location, type Program } from '../lib/types';
 import { batchActual, budgetCategory, depositTotals, utilizationPct } from '../lib/logic';
 import { date, mmk, monthLabel, overlapsMonth, pct } from '../lib/format';
 import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { Button, Empty, ErrorNote, Field, Modal, PageHeader, StatusBadge, useSubmit, useToast } from '../components/ui';
+import { programsOf } from '../lib/choices';
+import { ComboInput } from '../components/ComboInput';
 
 export default function BatchesPage() {
   const { data, can } = useData();
@@ -48,7 +50,7 @@ export default function BatchesPage() {
 }
 
 function BatchModal({ batch, onClose }: { batch?: Batch; onClose: () => void }) {
-  const { actions } = useData();
+  const { data, actions } = useData();
   const toast = useToast();
   const [f, setF] = useState({
     name: batch?.name ?? '', program: batch?.program ?? ('License' as Program), location: (batch?.location ?? 'YGN') as Location | null, start_date: batch?.start_date ?? '',
@@ -61,7 +63,7 @@ function BatchModal({ batch, onClose }: { batch?: Batch; onClose: () => void }) 
       <Button busy={busy} onClick={() => run(async () => { await actions.saveBatch({ ...f, id: batch?.id, budget: Number(f.budget) || 0 }); toast('Batch saved'); onClose(); })}>Save</Button>
     </>}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Program"><select className="input" value={f.program} onChange={(e) => setF({ ...f, program: e.target.value as Program })}>{PROGRAMS.map((p) => <option key={p}>{p}</option>)}</select></Field>
+        <Field label="Program" hint="Choose, or type a new program"><ComboInput value={f.program} onChange={(v) => setF({ ...f, program: v as Program })} options={programsOf(data)} label="Program" /></Field>
         <Field label="Branch" required={f.program === 'License'} hint={f.program === 'License' ? `Budget category: License - ${f.location ?? '?'}` : undefined}>
           <select className="input" value={f.location ?? ''} onChange={(e) => setF({ ...f, location: (e.target.value || null) as Location | null })}>
             {f.program !== 'License' && <option value="">—</option>}
