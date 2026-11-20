@@ -1,11 +1,11 @@
-import { isLowStock, retention } from './logic';
+import { actsAsHod, isLowStock, retention } from './logic';
 import type { DataSet, Profile, Settings } from './types';
 
 export interface ApprovalCounts { txns: number; requests: number; deposits: number; finance: number; total: number }
 
 export function approvalCounts(data: DataSet, user: Profile): ApprovalCounts {
   const notMine = (by: string | null) => by !== user.id;
-  if (user.role === 'hod') {
+  if (actsAsHod(user.role)) {
     const txns = data.stock_txns.filter((t) => t.status === 'Pending' && notMine(t.created_by)).length;
     const requests = data.material_requests.filter((r) => r.status === 'Pending' && notMine(r.created_by)).length;
     const deposits = data.deposits.filter((d) =>

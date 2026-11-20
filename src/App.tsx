@@ -50,7 +50,7 @@ function Shell({ children }: { children: ReactNode }) {
     { to: '/', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" /> },
     { to: '/deposits', label: 'License Deposits', icon: <Wallet className="h-4 w-4" />, badge: openDeposits, tone: 'count' },
     { to: '/inventory', label: 'Inventory', icon: <Boxes className="h-4 w-4" />, badge: low, tone: 'red' },
-    { to: '/approvals', label: 'Approvals', icon: <CheckSquare className="h-4 w-4" />, roles: ['hod', 'finance'], badge: counts?.total, tone: 'amber' },
+    { to: '/approvals', label: 'Approvals', icon: <CheckSquare className="h-4 w-4" />, roles: ['hod', 'admin', 'finance'], badge: counts?.total, tone: 'amber' },
     { to: '/requests', label: 'Requests', icon: <ClipboardList className="h-4 w-4" />, roles: ['staff', 'hod', 'admin'] },
     { to: '/assets', label: 'Assets', icon: <Wrench className="h-4 w-4" /> },
     { to: '/batches', label: 'Batches', icon: <GraduationCap className="h-4 w-4" /> },
@@ -165,7 +165,7 @@ function Gate() {
     <Shell>
       <Routes>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/approvals" element={<Guard roles={['hod', 'finance']}><ApprovalsPage /></Guard>} />
+        <Route path="/approvals" element={<Guard roles={['hod', 'admin', 'finance']}><ApprovalsPage /></Guard>} />
         <Route path="/deposits" element={<DepositsPage />} />
         <Route path="/deposits/:id" element={<DepositDetail />} />
         <Route path="/inventory" element={<InventoryPage />} />

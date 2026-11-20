@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { useData } from '../lib/store';
 import { TXN_LABELS } from '../lib/types';
-import { fmtQty, fmtTxnQty, lineName, lineQtyText, lineShort, requestValue, txnValue } from '../lib/logic';
+import { actsAsHod, fmtQty, fmtTxnQty, lineName, lineQtyText, lineShort, requestValue, txnValue } from '../lib/logic';
 import { date, mmk, monthLabel, num } from '../lib/format';
 import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { Badge, Button, Card, Empty, ErrorNote, Field, Modal, PageHeader, StatusBadge, useSubmit, useToast } from '../components/ui';
@@ -12,7 +12,7 @@ import { FileLink } from '../components/files';
 
 export default function ApprovalsPage() {
   const { data, user, name, actions } = useData();
-  const isHod = user.role === 'hod';
+  const isHod = actsAsHod(user.role);
   const notMine = (by: string | null) => by !== user.id;
   const [month, setMonth] = useMonthParam();
   const inMonth = (iso: string | null | undefined) => !month || (iso ?? '').startsWith(month);

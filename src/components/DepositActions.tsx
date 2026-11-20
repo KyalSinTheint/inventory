@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { CheckCircle2, FileUp, RotateCcw, Undo2, Ban, XCircle } from 'lucide-react';
 import { useData } from '../lib/store';
 import { FORFEIT_REASONS, type Deposit, type ForfeitReason } from '../lib/types';
-import type { DepositAction } from '../lib/logic';
+import { actsAsHod, type DepositAction } from '../lib/logic';
 import { Button, ErrorNote, Field, Modal, useSubmit, useToast } from './ui';
 import { mmk } from '../lib/format';
 
@@ -21,26 +21,26 @@ export function DepositActions({ deposit: d, compact }: { deposit: Deposit; comp
     btns.push({ kind: 'requestRefund', label: 'Request refund', variant: 'primary', icon: <Undo2 className="h-4 w-4" /> });
     btns.push({ kind: 'requestForfeit', label: 'Request forfeiture', variant: 'secondary', icon: <Ban className="h-4 w-4" /> });
   }
-  if (role === 'hod' && !mine && ((d.status === 'Refund Request' && !d.hod_approved_by) || d.status === 'Forfeiture Request')) {
+  if (actsAsHod(role) && !mine && ((d.status === 'Refund Request' && !d.hod_approved_by) || d.status === 'Forfeiture Request')) {
     btns.push({ kind: 'hodApprove', label: d.status === 'Refund Request' ? 'Approve refund' : 'Approve forfeiture', variant: 'success', icon: <CheckCircle2 className="h-4 w-4" /> });
   }
   if (role === 'finance' && d.status === 'Refund Request' && d.hod_approved_by) {
     btns.push({ kind: 'financeApprove', label: 'Confirm refund paid', variant: 'success', icon: <CheckCircle2 className="h-4 w-4" /> });
   }
-  if ((role === 'hod' && !mine && (d.status === 'Forfeiture Request' || (d.status === 'Refund Request' && !d.hod_approved_by)))
+  if ((actsAsHod(role) && !mine && (d.status === 'Forfeiture Request' || (d.status === 'Refund Request' && !d.hod_approved_by)))
     || (role === 'finance' && d.status === 'Refund Request' && d.hod_approved_by)) {
     btns.push({ kind: 'reject', label: 'Reject', variant: 'danger', icon: <XCircle className="h-4 w-4" /> });
   }
   if ((d.status === 'Refunded' || d.status === 'Forfeited') && can('deposit.request')) {
     btns.push({ kind: 'requestReversal', label: 'Request reversal', variant: 'secondary', icon: <RotateCcw className="h-4 w-4" /> });
   }
-  if (role === 'hod' && !mine && d.status === 'Reversal Request') {
+  if (actsAsHod(role) && !mine && d.status === 'Reversal Request') {
     btns.push({ kind: 'approveReversal', label: 'Approve reversal', variant: 'success', icon: <CheckCircle2 className="h-4 w-4" /> });
     btns.push({ kind: 'rejectReversal', label: 'Reject reversal', variant: 'danger', icon: <XCircle className="h-4 w-4" /> });
   }
 
   if (!btns.length) {
-    if (mine && ['Refund Request', 'Forfeiture Request', 'Reversal Request'].includes(d.status) && role === 'hod') {
+    if (mine && ['Refund Request', 'Forfeiture Request', 'Reversal Request'].includes(d.status) && actsAsHod(role)) {
       return <p className="text-xs text-slate-500">You submitted this request, so another approver must decide it.</p>;
     }
     return null;

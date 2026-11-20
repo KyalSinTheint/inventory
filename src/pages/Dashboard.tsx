@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { useData } from '../lib/store';
 import { approvalCounts, lowStockItems, retentionAlerts } from '../lib/alerts';
-import { depositTotals, fmtQty, utilizationPct, yearActual } from '../lib/logic';
+import { actsAsHod, depositTotals, fmtQty, utilizationPct, yearActual } from '../lib/logic';
 import { date, mmk, num, today } from '../lib/format';
 import { CATEGORIES, ROLE_LABELS } from '../lib/types';
 import { PageHeader, cx } from '../components/ui';
@@ -29,7 +29,7 @@ export default function Dashboard() {
   const year = new Date().getFullYear();
   const budget = data.budgets.find((b) => b.fiscal_year === year && (b.category ?? 'Overall') === 'Overall')?.amount ?? 0;
   const spent = yearActual(year, data.stock_txns, data.expenses).total;
-  const isApprover = user.role === 'hod' || user.role === 'finance';
+  const isApprover = actsAsHod(user.role) || user.role === 'finance';
   const batchName = (id: string) => data.batches.find((b) => b.id === id)?.name ?? '';
 
   return (

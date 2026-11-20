@@ -21,9 +21,12 @@ const PERMS: Record<Role, Permission[]> = {
   finance: ['deposit.finance', 'export'],
   admin: [
     'stock.create', 'request.create', 'count.create', 'deposit.create', 'deposit.request', 'asset.record', 'expense.create',
-    'budget.manage', 'batch.manage', 'batch.create', 'item.manage', 'export', 'users.manage', 'settings.manage',
+    'approve', 'budget.manage', 'batch.manage', 'batch.create', 'item.manage', 'export', 'users.manage', 'settings.manage',
   ],
 };
+
+/** The System Administrator has every right of the L&D HOD (approvals included). */
+export const actsAsHod = (role: Role | undefined | null): boolean => role === 'hod' || role === 'admin';
 
 export function can(role: Role | undefined, perm: Permission): boolean {
   return !!role && PERMS[role].includes(perm);
@@ -201,7 +204,7 @@ export function depositTransition(d: Deposit, a: DepositAction, role: Role, user
       };
 
     case 'hodApprove':
-      need(role === 'hod', 'Only the L&D HOD can approve.');
+      need(actsAsHod(role), 'Only the L&D HOD can approve.');
       need(!isRequester, 'You cannot approve a request you submitted.');
       if (d.status === 'Refund Request') {
         need(!d.hod_approved_by, 'HOD has already approved; waiting for Finance.');
@@ -222,7 +225,7 @@ export function depositTransition(d: Deposit, a: DepositAction, role: Role, user
 
     case 'reject':
       need(d.status === 'Refund Request' || d.status === 'Forfeiture Request', 'Nothing to reject.');
-      need(role === 'hod' || (role === 'finance' && d.status === 'Refund Request' && !!d.hod_approved_by),
+      need(actsAsHod(role) || (role === 'finance' && d.status === 'Refund Request' && !!d.hod_approved_by),
         'You cannot reject this request.');
       need(a.note.trim().length > 0, 'Give a reason for rejecting so staff can correct it.');
       return {
@@ -237,7 +240,7 @@ export function depositTransition(d: Deposit, a: DepositAction, role: Role, user
       return { status: 'Reversal Request', reversal_from: d.status, reversal_reason: a.reason.trim(), requested_by: userId, requested_at: now };
 
     case 'approveReversal':
-      need(role === 'hod', 'Only the L&D HOD can approve a reversal.');
+      need(actsAsHod(role), 'Only the L&D HOD can approve a reversal.');
       need(d.status === 'Reversal Request', 'No reversal is pending.');
       need(!isRequester, 'You cannot approve a reversal you requested.');
       return {
@@ -247,7 +250,7 @@ export function depositTransition(d: Deposit, a: DepositAction, role: Role, user
       };
 
     case 'rejectReversal':
-      need(role === 'hod', 'Only the L&D HOD can reject a reversal.');
+      need(actsAsHod(role), 'Only the L&D HOD can reject a reversal.');
       need(d.status === 'Reversal Request' && !!d.reversal_from, 'No reversal is pending.');
       need(a.note.trim().length > 0, 'Give a reason for rejecting.');
       return { status: d.reversal_from!, reversal_from: null, reversal_reason: `Reversal rejected: ${a.note.trim()}` };
