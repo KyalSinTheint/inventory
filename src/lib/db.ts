@@ -202,8 +202,10 @@ export function supabaseAdapter(url: string, key: string): DataAdapter {
       return normalise(table, [data])[0] as never;
     },
     async remove(table, id) {
-      const { error } = await sb.from(table).delete().eq('id', id);
-      if (error) throw new Error(error.message);
+      // Row Level Security hides a row it will not let you delete, so check something was actually deleted.
+      const { data, error } = await sb.from(table).delete().eq('id', id).select('id');
+      if (error) throw new Error(friendly(error.message));
+      if (!data?.length) throw new Error('Could not delete: you do not have permission, or it was already changed. Reload and try again.');
     },
     async listBy(table, column, value) {
       const { data, error } = await sb.from(table).select('*').eq(column, value);
