@@ -136,7 +136,9 @@ create index if not exists stock_txns_item_idx on public.stock_txns (item_id, cr
 create index if not exists stock_txns_batch_idx on public.stock_txns (batch_id);
 create index if not exists stock_txns_status_idx on public.stock_txns (status);
 
-create or replace function public.stock_delta(t public.stock_txns) returns integer
+-- Dropped first so this file can be run again after 20261122 changed the return type to numeric.
+drop function if exists public.stock_delta(public.stock_txns);
+create function public.stock_delta(t public.stock_txns) returns integer
 language sql immutable as $$
   select case t.type when 'IN' then t.qty when 'OUT' then -t.qty when 'ADJUST' then t.qty
     when 'RETURN' then case when t.condition = 'Good' then t.qty else 0 end end
