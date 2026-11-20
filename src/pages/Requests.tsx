@@ -238,7 +238,8 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
                         : <ComboInput value={l.unit} onChange={(v) => setLine(idx, { unit: v })} options={COMMON_UNITS} placeholder="box, pack, pcs…" label="Unit" className="input font-normal" />}
                     </div>
                   </div>
-                  <button className="mb-1 rounded p-2 text-slate-500 hover:bg-silver-100" onClick={() => setLines(lines.filter((_, i) => i !== idx))} aria-label="Remove line" disabled={lines.length === 1}><Trash2 className="h-4 w-4" /></button>
+                  <button type="button" className="mb-1 rounded-lg p-2 text-slate-500 transition hover:bg-rose-50 hover:text-kbz-red" title="Remove this item"
+                    onClick={() => setLines(lines.length === 1 ? [blank] : lines.filter((_, i) => i !== idx))} aria-label="Remove line"><Trash2 className="h-4 w-4" /></button>
                 </div>
 
                 {/* Row 2: price and amount */}
