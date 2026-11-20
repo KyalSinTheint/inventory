@@ -36,7 +36,7 @@ export function RequestLinesTable({ lines, items, pending }: { lines: RequestLin
           <tr>
             <th className="px-3 py-2 font-medium">Item</th>
             <th className="px-3 py-2 text-right font-medium">Qty</th>
-            <th className="px-3 py-2 font-medium">Unit (ယူနစ်)</th>
+            <th className="px-3 py-2 font-medium">Unit</th>
             <th className="px-3 py-2 text-right font-medium">Price / unit</th>
             <th className="px-3 py-2 text-right font-medium">Price / piece</th>
             <th className="px-3 py-2 text-right font-medium">Amount</th>

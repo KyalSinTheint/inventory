@@ -223,7 +223,7 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
                   <label className="text-[11px] font-semibold text-slate-500">Qty
                     <input className={cx('input mt-1 text-right font-normal', over && 'border-red-400')} type="number" min="1" step="1" placeholder="0" value={l.qty} onChange={(e) => setLine(idx, { qty: e.target.value })} aria-label="Quantity" />
                   </label>
-                  <div className="text-[11px] font-semibold text-slate-500">ယူနစ်
+                  <div className="text-[11px] font-semibold text-slate-500">Unit
                     <div className="mt-1">
                       {it ? (split ? (
                         <div className="flex rounded-xl bg-slate-100 p-1 text-xs font-semibold" role="group" aria-label="Issue by">
@@ -235,7 +235,7 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
                           ))}
                         </div>
                       ) : <div className="input flex items-center bg-slate-100 font-normal text-slate-600">{it.unit}</div>)
-                        : <ComboInput value={l.unit} onChange={(v) => setLine(idx, { unit: v })} options={COMMON_UNITS} placeholder="box၊ pack၊ pcs…" label="Unit" className="input font-normal" />}
+                        : <ComboInput value={l.unit} onChange={(v) => setLine(idx, { unit: v })} options={COMMON_UNITS} placeholder="box, pack, pcs…" label="Unit" className="input font-normal" />}
                     </div>
                   </div>
                   <button className="mb-1 rounded p-2 text-slate-500 hover:bg-silver-100" onClick={() => setLines(lines.filter((_, i) => i !== idx))} aria-label="Remove line" disabled={lines.length === 1}><Trash2 className="h-4 w-4" /></button>
