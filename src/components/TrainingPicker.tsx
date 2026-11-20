@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
 import { useData } from '../lib/store';
 import { LOCATIONS, LOCATION_LABELS, type Batch, type Location, type Program } from '../lib/types';
@@ -7,11 +7,32 @@ import { Button, ErrorNote, useSubmit, useToast } from './ui';
 import { programsOf, tidyChoice } from '../lib/choices';
 import { ComboInput } from './ComboInput';
 
+/** A training typed in the picker but not added yet; the form adds it when it is saved (see useTrainingDraft). */
+export type TrainingDraft = Pick<Batch, 'name' | 'program' | 'location' | 'start_date' | 'end_date'>;
+
+/**
+ * Keeps the picker's not-yet-added training, and on save returns the training id to use:
+ * the chosen one, or the typed one, which is added first.
+ */
+export function useTrainingDraft() {
+  const { actions } = useData();
+  const draft = useRef<TrainingDraft | null>(null);
+  return {
+    onDraft: (d: TrainingDraft | null) => { draft.current = d; },
+    resolve: async (id: string): Promise<string> => {
+      if (id || !draft.current) return id;
+      const b = await actions.saveBatch({ ...draft.current, budget: 0, status: 'Active' });
+      draft.current = null;
+      return b.id;
+    },
+  };
+}
+
 /**
  * Type a training name, or pick one of the existing trainings from the list that appears as you type.
  * A name that is not in the list can be added on the spot (program, branch and dates), then it is selected.
  */
-export function TrainingPicker({ value, onChange, batches, program, none, required }: {
+export function TrainingPicker({ value, onChange, batches, program, none, required, onDraft }: {
   value: string;
   onChange: (id: string, batch?: Batch) => void;
   /** Trainings to offer (already filtered by the caller). */
@@ -21,6 +42,8 @@ export function TrainingPicker({ value, onChange, batches, program, none, requir
   /** Placeholder when no training is chosen, e.g. "No training"; when set, leaving it empty is allowed. */
   none?: string;
   required?: boolean;
+  /** Told about a new training name typed but not added yet, so saving the form can add it. */
+  onDraft?: (d: TrainingDraft | null) => void;
 }) {
   const { data, actions, can } = useData();
   const toast = useToast();
@@ -40,8 +63,20 @@ export function TrainingPicker({ value, onChange, batches, program, none, requir
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
-  const typedNew = text.trim() !== '' && !match(text);
+  // A typed name that now exists (e.g. it was just added on save) becomes the chosen training.
+  const matched = match(text);
+  useEffect(() => {
+    if (matched && matched.id !== value) onChange(matched.id, matched);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matched?.id]);
+  const typedNew = text.trim() !== '' && !matched;
   const sameNameElsewhere = typedNew && data.batches.some((b) => b.name.trim().toLowerCase() === text.trim().toLowerCase());
+  const canAdd = typedNew && !sameNameElsewhere && allowed;
+  const draftKey = canAdd ? JSON.stringify([text.trim(), prog, f.location, f.start_date, f.end_date]) : '';
+  useEffect(() => {
+    onDraft?.(canAdd ? { name: text.trim(), program: prog, location: prog === 'License' ? f.location : null, start_date: f.start_date || today(), end_date: f.end_date } : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
 
   return (
     <div>
@@ -63,6 +98,7 @@ export function TrainingPicker({ value, onChange, batches, program, none, requir
       ) : allowed ? (
         <div className="mt-2 rounded-2xl bg-sky-50/80 p-3 ring-1 ring-sky-200">
           <p className="text-xs font-semibold text-kbz-navy">New training: “{text.trim()}”</p>
+          <p className="text-[11px] text-slate-500">It is added when you save the form, or add it now.</p>
           {(!program || prog === 'License') && (
             <div className="mt-2 flex gap-2">
               {!program && (

@@ -5,7 +5,7 @@ import { type Asset, type AssetAction, type AssetCondition, type Category } from
 import { date, dateTime, mmk, monthLabel, num, today } from '../lib/format';
 import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { Button, Empty, ErrorNote, Field, Modal, PageHeader, SearchBox, StatusBadge, useSubmit, useToast } from '../components/ui';
-import { TrainingPicker } from '../components/TrainingPicker';
+import { TrainingPicker, useTrainingDraft } from '../components/TrainingPicker';
 import { categoriesOf } from '../lib/choices';
 import { ComboInput } from '../components/ComboInput';
 
@@ -106,18 +106,19 @@ function NewAsset({ onClose }: { onClose: () => void }) {
 function ActionModal({ asset: a, action, onClose }: { asset: Asset; action: AssetAction; onClose: () => void }) {
   const { data, actions } = useData();
   const toast = useToast();
+  const training = useTrainingDraft();
   const [f, setF] = useState({ holder: '', batch_id: '', condition: (action === 'Check In' ? a.condition : 'Good') as AssetCondition, cost: '', note: '' });
   const { busy, error, run } = useSubmit();
   return (
     <Modal open onClose={onClose} title={`${action}: ${a.name}`} footer={<>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
-      <Button busy={busy} onClick={() => run(async () => { await actions.assetAction(a.id, action, { ...f, batch_id: f.batch_id || null, cost: Number(f.cost) || 0 }); toast(`${a.name}: ${action}`); onClose(); })}>Save</Button>
+      <Button busy={busy} onClick={() => run(async () => { const batch_id = await training.resolve(f.batch_id); await actions.assetAction(a.id, action, { ...f, batch_id: batch_id || null, cost: Number(f.cost) || 0 }); toast(`${a.name}: ${action}`); onClose(); })}>Save</Button>
     </>}>
       <p className="mb-3 text-sm text-slate-600">{a.name} · {a.serial_no}</p>
       <div className="grid gap-3">
         {action === 'Check Out' && <>
           <Field label="Checked out to" required><input className="input" value={f.holder} onChange={(e) => setF({ ...f, holder: e.target.value })} placeholder="Trainer / staff name" /></Field>
-          <Field label="For training batch"><TrainingPicker value={f.batch_id} onChange={(id) => setF({ ...f, batch_id: id })} batches={data.batches.filter((b) => b.status !== 'Completed')} none="—" /></Field>
+          <Field label="For training batch"><TrainingPicker value={f.batch_id} onChange={(id) => setF({ ...f, batch_id: id })} batches={data.batches.filter((b) => b.status !== 'Completed')} none="—" onDraft={training.onDraft} /></Field>
         </>}
         {(action === 'Check In' || action === 'Maintenance Done') && (
           <Field label="Condition on return" required><select className="input" value={f.condition} onChange={(e) => setF({ ...f, condition: e.target.value as AssetCondition })}><option>Good</option><option>Fair</option><option>Damaged</option></select></Field>

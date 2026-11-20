@@ -11,7 +11,7 @@ import { FilePicker } from '../components/files';
 import { exportExcel, exportPdf } from '../lib/export';
 import { MonthBar } from '../components/MonthBar';
 import { depositMasterReport } from './reportSpecs';
-import { TrainingPicker } from '../components/TrainingPicker';
+import { TrainingPicker, useTrainingDraft } from '../components/TrainingPicker';
 
 export const batchLabel = (b: Batch | undefined) => (b ? b.name : '—');
 
@@ -161,13 +161,15 @@ function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (i
     training_date: first?.start_date ?? today(), training_end_date: first?.end_date || first?.start_date || today(), amount: '', payment_date: today(),
   });
   const [files, setFiles] = useState<File[]>([]);
+  const training = useTrainingDraft();
   const { busy, error, run } = useSubmit();
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
   return (
     <Modal wide open onClose={onClose} title="Register license class deposit" footer={<>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
       <Button busy={busy} onClick={() => run(async () => {
-        const d = await actions.registerDeposit({ ...f, agent_code: f.agent_code || null, amount: Number(f.amount) }, files);
+        const batch_id = await training.resolve(f.batch_id);
+        const d = await actions.registerDeposit({ ...f, batch_id, agent_code: f.agent_code || null, amount: Number(f.amount) }, files);
         toast('Deposit registered as Held');
         onCreated(d.id);
       })}>Register as Held</Button>
@@ -186,7 +188,7 @@ function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (i
         <Field label="NRC number" required hint={NRC_HINT}><input className="input" value={f.nrc} onChange={set('nrc')} placeholder="12/MaYaKa(N)123456" /></Field>
         <Field label="Agent code / employee ID" hint="Optional"><input className="input uppercase" value={f.agent_code} onChange={set('agent_code')} /></Field>
         <Field label="License course batch" required hint={batches.length ? undefined : 'Type the batch name to add it.'}>
-          <TrainingPicker value={f.batch_id} batches={batches} program="License" required
+          <TrainingPicker value={f.batch_id} batches={batches} program="License" required onDraft={training.onDraft}
             onChange={(id, b) => setF({ ...f, batch_id: id, training_date: b?.start_date || f.training_date, training_end_date: b?.end_date || b?.start_date || f.training_end_date })} />
         </Field>
         <Field label="Training start date" required hint="Defaults to the batch dates"><input className="input" type="date" value={f.training_date}

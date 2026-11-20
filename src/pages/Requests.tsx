@@ -10,7 +10,7 @@ import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { FileLink, FilePicker } from '../components/files';
 import { EXCEL_ACCEPT } from '../lib/files';
 import { Button, cx, Empty, ErrorNote, Field, Modal, PageHeader, useSubmit, useToast } from '../components/ui';
-import { TrainingPicker } from '../components/TrainingPicker';
+import { TrainingPicker, useTrainingDraft } from '../components/TrainingPicker';
 import { RequestLinesTable } from '../components/RequestLines';
 import { categoriesOf } from '../lib/choices';
 
@@ -148,6 +148,7 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
   const toast = useToast();
   const batches = data.batches.filter((b) => b.status !== 'Completed' || b.id === request?.batch_id);
   const [batchId, setBatchId] = useState(request?.batch_id ?? batches[0]?.id ?? '');
+  const training = useTrainingDraft();
   const [purpose, setPurpose] = useState(request?.purpose ?? '');
   const [remarks, setRemarks] = useState(request?.remarks ?? '');
   const [file, setFile] = useState<File[]>([]);
@@ -172,13 +173,14 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
       <span className="mr-auto self-center text-sm text-slate-600">Estimated value: <b>{mmk(total)}</b></span>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
       <Button busy={busy} onClick={() => run(async () => {
-        await actions.saveRequest({ id: request?.id, batch_id: batchId, purpose, remarks, lines: lines.filter((l) => l.item_id || l.text.trim() || l.qty).map(toLine) },
+        const batch_id = await training.resolve(batchId);
+        await actions.saveRequest({ id: request?.id, batch_id, purpose, remarks, lines: lines.filter((l) => l.item_id || l.text.trim() || l.qty).map(toLine) },
           file[0] ?? (removeFile ? null : undefined));
         toast('Request sent to HOD for approval'); onClose();
       })}>Submit for approval</Button>
     </>}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Training" required hint="Type to search, or type a new name to add it."><TrainingPicker value={batchId} onChange={setBatchId} batches={batches} required /></Field>
+        <Field label="Training" required hint="Type to search, or type a new name to add it."><TrainingPicker value={batchId} onChange={setBatchId} batches={batches} required onDraft={training.onDraft} /></Field>
         <Field label="Purpose"><input className="input" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Day 1–3 refreshments for 30 trainees" /></Field>
         <Field label="Remarks" className="sm:col-span-2"><textarea className="input min-h-24" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Details for the HOD: number of trainees, delivery date, sizes, special instructions…" /></Field>
         <Field label="Attachment (Excel list, etc.)" className="sm:col-span-2" hint="Excel, CSV, PDF or photo">
