@@ -217,7 +217,7 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
                 <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_9rem_2rem] items-end gap-2">
                   <label className="min-w-0 text-[11px] font-semibold text-slate-500">
                     <span className="flex items-center gap-1.5">Item {typed && <span className="rounded-full bg-amber-100 px-1.5 py-px text-[10px] text-amber-800">Not in store</span>}{it && <span className="rounded-full bg-emerald-100 px-1.5 py-px text-[10px] text-emerald-800">In store</span>}</span>
-                    <input className="input mt-1 font-normal" list="store-items" value={l.text} aria-label="Item" placeholder="Type or choose an item…"
+                    <input className="input mt-1 font-normal" list="store-items" autoComplete="off" value={l.text} aria-label="Item" placeholder="Type or choose an item…"
                       onChange={(e) => { const m = match(e.target.value); setLine(idx, { text: e.target.value, item_id: m?.id ?? '', by_piece: m ? l.by_piece && canSplit(m) : false }); }} />
                   </label>
                   <label className="text-[11px] font-semibold text-slate-500">Qty

@@ -52,7 +52,8 @@ export function TrainingPicker({ value, onChange, batches, program, none, requir
   const current = data.batches.find((b) => b.id === value);
   const [text, setText] = useState(current?.name ?? '');
   const [more, setMore] = useState(false);
-  const [f, setF] = useState({ program: program ?? '', location: 'YGN' as Location, start_date: today(), end_date: '' });
+  // Nothing is filled in for you: program and dates stay empty unless typed (no start date = today).
+  const [f, setF] = useState({ program: program ?? '', location: 'YGN' as Location, start_date: '', end_date: '' });
   const { busy, error, run } = useSubmit();
   // A program is optional: a typed training without one is filed under "Other".
   // A training typed as a program's name (e.g. "YCP") belongs to that program.
@@ -83,7 +84,7 @@ export function TrainingPicker({ value, onChange, batches, program, none, requir
 
   return (
     <div>
-      <input className="input" value={text} required={required} aria-label="Training"
+      <input className="input" value={text} required={required} aria-label="Training" autoComplete="off"
         placeholder={none ?? 'Type the training name…'} onChange={(e) => setText(e.target.value)} />
       {typedNew && (allowed ? (
         <div className="mt-1 text-xs text-slate-500">

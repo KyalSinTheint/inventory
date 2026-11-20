@@ -7,7 +7,7 @@ export function ComboInput({ value, onChange, options, placeholder, label, class
   const id = useId();
   return (
     <>
-      <input className={className ?? 'input'} list={id} value={value} placeholder={placeholder ?? 'Type or choose…'} aria-label={label}
+      <input className={className ?? 'input'} list={id} value={value} autoComplete="off" placeholder={placeholder ?? 'Type or choose…'} aria-label={label}
         onChange={(e) => onChange(e.target.value)} />
       <datalist id={id}>{options.map((o) => <option key={o} value={o} />)}</datalist>
     </>
