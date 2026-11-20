@@ -147,7 +147,7 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
   const { data, actions } = useData();
   const toast = useToast();
   const batches = data.batches.filter((b) => b.status !== 'Completed' || b.id === request?.batch_id);
-  const [batchId, setBatchId] = useState(request?.batch_id ?? batches[0]?.id ?? '');
+  const [batchId, setBatchId] = useState(request?.batch_id ?? '');
   const training = useTrainingDraft();
   const [purpose, setPurpose] = useState(request?.purpose ?? '');
   const [remarks, setRemarks] = useState(request?.remarks ?? '');

@@ -155,10 +155,10 @@ function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (i
   const { data, actions } = useData();
   const toast = useToast();
   const batches = data.batches.filter((b) => b.program === 'License' && b.status !== 'Completed').sort((a, b) => b.start_date.localeCompare(a.start_date));
-  const first = batches[0];
+
   const [f, setF] = useState({
-    trainee_name: '', nrc: '', agent_code: '', trainee_type: 'Internal' as TraineeType, batch_id: first?.id ?? '',
-    training_date: first?.start_date ?? today(), training_end_date: first?.end_date || first?.start_date || today(), amount: '', payment_date: today(),
+    trainee_name: '', nrc: '', agent_code: '', trainee_type: 'Internal' as TraineeType, batch_id: '',
+    training_date: today(), training_end_date: today(), amount: '', payment_date: today(),
   });
   const [files, setFiles] = useState<File[]>([]);
   const training = useTrainingDraft();
