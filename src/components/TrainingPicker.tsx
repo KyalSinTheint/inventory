@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
 import { useData } from '../lib/store';
 import { LOCATIONS, LOCATION_LABELS, type Batch, type Location, type Program } from '../lib/types';
@@ -47,7 +47,6 @@ export function TrainingPicker({ value, onChange, batches, program, none, requir
 }) {
   const { data, actions, can } = useData();
   const toast = useToast();
-  const listId = useId();
   const allowed = can('batch.create');
   const programs = programsOf(data);
   const current = data.batches.find((b) => b.id === value);
@@ -57,7 +56,6 @@ export function TrainingPicker({ value, onChange, batches, program, none, requir
   const { busy, error, run } = useSubmit();
   // A program is optional: a typed training without one is filed under "Other".
   const prog = program ?? (tidyChoice(f.program, programs) || 'Other');
-  const list = [...batches].sort((a, b) => (b.start_date ?? '').localeCompare(a.start_date ?? ''));
   const match = (t: string) => batches.find((b) => b.name.trim().toLowerCase() === t.trim().toLowerCase());
 
   // Follow a value chosen elsewhere (e.g. the form was reset).
@@ -83,11 +81,8 @@ export function TrainingPicker({ value, onChange, batches, program, none, requir
 
   return (
     <div>
-      <input className="input" list={listId} value={text} required={required} aria-label="Training"
+      <input className="input" value={text} required={required} aria-label="Training"
         placeholder={none ?? 'Type the training name…'} onChange={(e) => setText(e.target.value)} />
-      <datalist id={listId}>
-        {list.map((b) => <option key={b.id} value={b.name}>{[b.program, b.location, b.start_date && date(b.start_date)].filter(Boolean).join(' · ')}</option>)}
-      </datalist>
       {matched && (
         <p className="mt-1 text-xs text-emerald-700">{[matched.program, matched.location, matched.start_date && `${date(matched.start_date)}${matched.end_date ? ` – ${date(matched.end_date)}` : ''}`].filter(Boolean).join(' · ')}</p>
       )}

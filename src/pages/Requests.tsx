@@ -180,7 +180,7 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
       })}>Submit for approval</Button>
     </>}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Training" required hint="Type the training name; existing ones are suggested."><TrainingPicker value={batchId} onChange={setBatchId} batches={batches} required onDraft={training.onDraft} /></Field>
+        <Field label="Training" required hint="Type the training name."><TrainingPicker value={batchId} onChange={setBatchId} batches={batches} required onDraft={training.onDraft} /></Field>
         <Field label="Purpose"><input className="input" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Day 1–3 refreshments for 30 trainees" /></Field>
         <Field label="Remarks" className="sm:col-span-2"><textarea className="input min-h-24" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Details for the HOD: number of trainees, delivery date, sizes, special instructions…" /></Field>
         <Field label="Attachment (Excel list, etc.)" className="sm:col-span-2" hint="Excel, CSV, PDF or photo">
