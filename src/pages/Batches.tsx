@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Pencil, Plus } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useData } from '../lib/store';
 import { LOCATIONS, LOCATION_LABELS, type Batch, type BatchStatus, type Location, type Program } from '../lib/types';
 import { batchActual, budgetCategory, depositTotals, utilizationPct } from '../lib/logic';
@@ -14,12 +14,13 @@ export default function BatchesPage() {
   const { data, can } = useData();
   const [edit, setEdit] = useState<Batch | 'new' | null>(null);
   const [month, setMonth] = useMonthParam();
-  const rows = [...data.batches].filter((b) => !month || overlapsMonth(month, b.start_date, b.end_date)).sort((a, b) => b.start_date.localeCompare(a.start_date));
+  const live = data.batches.filter((b) => !b.archived);
+  const rows = [...live].filter((b) => !month || overlapsMonth(month, b.start_date, b.end_date)).sort((a, b) => b.start_date.localeCompare(a.start_date));
   return (
     <>
       <PageHeader title="Training Batches" subtitle="Corporate, Agency, YCP and License classes, each with its own budget"
         actions={can('batch.manage') && <Button onClick={() => setEdit('new')}><Plus className="h-4 w-4" />New batch</Button>} />
-      <MonthBar month={month} onChange={setMonth} dates={data.batches.flatMap((b) => [b.start_date, b.end_date])} note={month ? `Trainings running in ${monthLabel(month)}` : 'All trainings'} />
+      <MonthBar month={month} onChange={setMonth} dates={live.flatMap((b) => [b.start_date, b.end_date])} note={month ? `Trainings running in ${monthLabel(month)}` : 'All trainings'} />
       <div className="table-wrap">
         <table className="tbl">
           <thead><tr><th>Training</th><th>Category</th><th>Dates</th><th>Status</th><th className="num">Budget</th><th className="num">Actual</th><th className="num">Used</th><th className="num">Deposits</th>{can('batch.manage') && <th />}</tr></thead>
@@ -57,8 +58,17 @@ function BatchModal({ batch, onClose }: { batch?: Batch; onClose: () => void }) 
     end_date: batch?.end_date ?? '', budget: String(batch?.budget ?? ''), status: batch?.status ?? ('Planned' as BatchStatus),
   });
   const { busy, error, run } = useSubmit();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const del = useSubmit();
   return (
     <Modal open onClose={onClose} title={batch ? `Edit ${batch.name}` : 'New training batch'} footer={<>
+      {batch && (confirmDelete ? (
+        <span className="mr-auto flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-kbz-red">Delete this training?</span>
+          <Button size="sm" variant="danger" busy={del.busy} onClick={() => del.run(async () => { await actions.archiveBatch(batch.id); toast(`${batch.name} deleted`); onClose(); })}><Trash2 className="h-4 w-4" />Yes, delete</Button>
+          <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>No</Button>
+        </span>
+      ) : <Button variant="ghost" className="mr-auto text-kbz-red" onClick={() => setConfirmDelete(true)}><Trash2 className="h-4 w-4" />Delete</Button>)}
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
       <Button busy={busy} onClick={() => run(async () => { await actions.saveBatch({ ...f, id: batch?.id, budget: Number(f.budget) || 0 }); toast('Batch saved'); onClose(); })}>Save</Button>
     </>}>
@@ -77,6 +87,7 @@ function BatchModal({ batch, onClose }: { batch?: Batch; onClose: () => void }) 
         <Field label="Status"><select className="input" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value as BatchStatus })}><option>Planned</option><option>Active</option><option>Completed</option></select></Field>
       </div>
       <ErrorNote error={error} />
+      <ErrorNote error={del.error} />
     </Modal>
   );
 }

@@ -90,7 +90,7 @@ export default function Dashboard() {
         ) : (
           <ModuleCard no="06" to="/batches" title={<>Training<br />batches</>} tone="graphite"
             text="Corporate, Agency, YCP, License and Product & Soft Skills classes."
-            stat={`${data.batches.filter((b) => b.status !== 'Completed').length} active or planned`}
+            stat={`${data.batches.filter((b) => !b.archived && b.status !== 'Completed').length} active or planned`}
             art={<WaveOrbArt />} />
         )}
       </div>

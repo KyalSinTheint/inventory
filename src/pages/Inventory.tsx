@@ -616,7 +616,7 @@ function ReturnModal({ onClose }: { onClose: () => void }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Training batch" required className="sm:col-span-2">
           <select className="input" value={f.batch_id} onChange={(e) => setF({ ...f, batch_id: e.target.value, item_id: '' })}>
-            <option value="">Choose training…</option>{data.batches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            <option value="">Choose training…</option>{data.batches.filter((b) => !b.archived).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </Field>
         <Field label="Item issued to this batch" required className="sm:col-span-2"><ItemPicker value={f.item_id} onChange={(v) => setF({ ...f, item_id: v, by_piece: false })} filter={(i) => issuedItems.has(i.id)} /></Field>

@@ -154,7 +154,7 @@ export const NRC_HINT = 'e.g. 12/MaYaKa(N)123456 or ၁၂/မရက(နို�
 function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const { data, actions } = useData();
   const toast = useToast();
-  const batches = data.batches.filter((b) => b.program === 'License' && b.status !== 'Completed').sort((a, b) => b.start_date.localeCompare(a.start_date));
+  const batches = data.batches.filter((b) => !b.archived && b.program === 'License' && b.status !== 'Completed').sort((a, b) => b.start_date.localeCompare(a.start_date));
 
   const [f, setF] = useState({
     trainee_name: '', nrc: '', agent_code: '', trainee_type: 'Internal' as TraineeType, batch_id: '',

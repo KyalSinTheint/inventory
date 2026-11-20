@@ -172,6 +172,17 @@ function makeActions(
       set((d) => ({ ...d, item_groups: d.item_groups.filter((r) => r.id !== id) }));
       await audit('Delete', 'main item', id, g.label);
     },
+    /** Delete a training from the lists. It is archived, not erased: older records keep showing its name. */
+    async archiveBatch(id: string) {
+      need('batch.manage');
+      const b = get().data.batches.find((x) => x.id === id);
+      if (!b) throw new RuleError('Training not found.');
+      if (get().data.deposits.some((d) => d.batch_id === id && ['Held', 'Refund Request', 'Forfeiture Request', 'Reversal Request'].includes(d.status))) {
+        throw new RuleError(`"${b.name}" still has open license deposits; close them first.`);
+      }
+      await update('batches', id, { archived: true });
+      await audit('Delete', 'batch', id, b.name);
+    },
     async saveBatch(input: Omit<Batch, 'id' | 'created_at' | 'code'> & { id?: string; code?: string }) {
       // Anyone who makes requests may add a new training by name; editing stays with HOD / Admin.
       need(input.id ? 'batch.manage' : 'batch.create');

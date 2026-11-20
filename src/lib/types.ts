@@ -82,6 +82,8 @@ export interface Batch {
   budget: number;
   status: BatchStatus;
   created_at: string;
+  /** Deleted from the lists (kept so older records still show its name). */
+  archived?: boolean;
 }
 
 export type TxnType = 'IN' | 'OUT' | 'RETURN' | 'ADJUST';
