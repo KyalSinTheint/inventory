@@ -47,6 +47,9 @@ with real data before going live.
    `20261120000000_custom_item_groups.sql` (create / rename main items and choose their icons), then
    `20261121000000_pack_size.sql` (pieces per pack, for the price per piece) `20261122000000_issue_by_piece.sql` (issue single pieces, e.g. 5 sachets, out of a pack) and
    `20261123000000_admin_accounts.sql` (the administrator creates logins in the portal). All are safe to run again.
+   **Or let GitHub do it:** add the repository secret `SUPABASE_DB_URL` (Supabase → Connect → Session pooler
+   connection string). The *Supabase database update* workflow then runs every migration whenever they change on
+   `main`, and can be started by hand from the Actions tab.
 3. Copy `.env.example` to `.env` and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
    (Project Settings → API).
 4. `npm run build` and deploy `dist/` (a `vercel.json` is included; any static host works).

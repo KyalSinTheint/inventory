@@ -1,0 +1,50 @@
+# Applies supabase/migrations/*.sql to the Supabase database whenever they change on main,
+# or by hand from the Actions tab ("Run workflow"). Every migration is written to be safe to run again,
+# so all files run in filename order each time.
+#
+# One-time setup: GitHub repo → Settings → Secrets and variables → Actions → New repository secret
+#   Name:  SUPABASE_DB_URL
+#   Value: Supabase → Connect → "Session pooler" connection string (postgresql://postgres.<ref>:<password>@...pooler.supabase.com:5432/postgres)
+name: Supabase database update
+
+on:
+  push:
+    branches: [main]
+    paths: ['supabase/migrations/**', '.github/workflows/supabase-migrate.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: supabase-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the secret is set
+        id: check
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$DB_URL" ]; then
+            echo "::warning::SUPABASE_DB_URL secret is not set, so the database was not updated. Add it under Settings → Secrets and variables → Actions."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run migrations
+        if: steps.check.outputs.ready == 'true'
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            echo "::group::$f"
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$f"
+            echo "::endgroup::"
+          done
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -c "notify pgrst, 'reload schema';"
+          echo "Account functions now in the database:"
+          psql "$DB_URL" -At -c "select proname from pg_proc where proname in ('admin_create_user','admin_set_password','setup_first_admin','portal_needs_setup') order by 1;"
