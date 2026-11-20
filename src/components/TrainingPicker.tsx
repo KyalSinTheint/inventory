@@ -4,8 +4,6 @@ import { useData } from '../lib/store';
 import { LOCATIONS, LOCATION_LABELS, PROGRAMS, type Batch, type Location, type Program } from '../lib/types';
 import { today } from '../lib/format';
 import { Button, ErrorNote, useSubmit, useToast } from './ui';
-import { programsOf, tidyChoice } from '../lib/choices';
-import { ComboInput } from './ComboInput';
 
 /** A training typed in the picker but not added yet; the form adds it when it is saved (see useTrainingDraft). */
 export type TrainingDraft = Pick<Batch, 'name' | 'program' | 'location' | 'start_date' | 'end_date'>;
@@ -48,17 +46,16 @@ export function TrainingPicker({ value, onChange, batches, program, none, requir
   const { data, actions, can } = useData();
   const toast = useToast();
   const allowed = can('batch.create');
-  const programs = programsOf(data);
   const current = data.batches.find((b) => b.id === value);
   const [text, setText] = useState(current?.name ?? '');
   const [more, setMore] = useState(false);
-  // Nothing is filled in for you: program and dates stay empty unless typed (no start date = today).
-  const [f, setF] = useState({ program: program ?? '', location: 'YGN' as Location, start_date: '', end_date: '' });
+  // Dates stay empty unless typed (no start date = today). The program comes from the name, else "Other".
+  const [f, setF] = useState({ location: 'YGN' as Location, start_date: '', end_date: '' });
   const { busy, error, run } = useSubmit();
   // A program is optional: a typed training without one is filed under "Other".
   // A training typed as a program's name (e.g. "YCP") belongs to that program.
   const namedProgram = PROGRAMS.find((p) => p.toLowerCase() === text.trim().toLowerCase());
-  const prog = program ?? (tidyChoice(f.program, programs) || namedProgram || 'Other');
+  const prog = program ?? namedProgram ?? 'Other';
   const match = (t: string) => batches.find((b) => b.name.trim().toLowerCase() === t.trim().toLowerCase());
 
   // Follow a value chosen elsewhere (e.g. the form was reset).
@@ -89,18 +86,15 @@ export function TrainingPicker({ value, onChange, batches, program, none, requir
       {typedNew && (allowed ? (
         <div className="mt-1 text-xs text-slate-500">
           <span>New training · saved with the form.</span>{' '}
-          <button type="button" className="font-semibold text-kbz-blue hover:underline" onClick={() => setMore(!more)}>{more ? 'Hide details' : 'Add program / dates (optional)'}</button>
+          <button type="button" className="font-semibold text-kbz-blue hover:underline" onClick={() => setMore(!more)}>{more ? 'Hide date' : 'Add date (optional)'}</button>
           {more && (
             <div className="mt-2 rounded-2xl bg-sky-50/80 p-3 ring-1 ring-sky-200">
-              <div className="flex gap-2">
-                {!program && <div className="min-w-0 flex-1"><ComboInput value={f.program} onChange={(v) => setF({ ...f, program: v })} options={programs} placeholder="Program (optional)" label="Program" /></div>}
-                {prog === 'License' && (
-                  <select className="input min-w-0 flex-1" value={f.location} onChange={(e) => setF({ ...f, location: e.target.value as Location })} aria-label="Branch">
+              {prog === 'License' && (
+                  <select className="input mb-2" value={f.location} onChange={(e) => setF({ ...f, location: e.target.value as Location })} aria-label="Branch">
                     {LOCATIONS.map((l) => <option key={l} value={l}>{l} · {LOCATION_LABELS[l]}</option>)}
                   </select>
                 )}
-              </div>
-              <div className="mt-2 grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <label className="text-xs text-slate-500">Start date<input className="input mt-0.5" type="date" value={f.start_date} onChange={(e) => setF({ ...f, start_date: e.target.value })} /></label>
                 <label className="text-xs text-slate-500">End date<input className="input mt-0.5" type="date" min={f.start_date} value={f.end_date} onChange={(e) => setF({ ...f, end_date: e.target.value })} /></label>
               </div>
