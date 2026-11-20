@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, BarChart3, Bell, Boxes, CheckSquare, ClipboardList, FileText, GraduationCap, LayoutDashboard, Lock, LogOut, PiggyBank,
-  RefreshCw, ScrollText, Settings as SettingsIcon, Users, Wallet, Wrench,
+  RefreshCw, ScrollText, Users, Wallet, Wrench,
   KeyRound,
 } from 'lucide-react';
 import { StoreProvider, useStore } from './lib/store';
@@ -23,7 +23,6 @@ import ApprovalsPage from './pages/Approvals';
 import ReportsPage from './pages/Reports';
 import AuditPage from './pages/Audit';
 import UsersPage from './pages/Users';
-import SettingsPage from './pages/Settings';
 
 interface NavItem { to: string; label: string; icon: ReactNode; roles?: Role[]; badge?: number; tone?: 'count' | 'red' | 'amber' }
 
@@ -31,7 +30,7 @@ const ROLE_DESC: Record<Role, { option: string; perm: string }> = {
   staff: { option: 'L&D Staff (Maker / Entry)', perm: 'Maker: Stock & Deposit Requests' },
   hod: { option: 'L&D HOD (Approver & Budget)', perm: 'Approver: Refunds, Forfeitures & Stock' },
   finance: { option: 'Finance / Auditor (Read-Only)', perm: 'Read-Only: Audit & Ledger Verification' },
-  admin: { option: 'System Administrator (Full Access)', perm: 'Full Access: Governance & Settings' },
+  admin: { option: 'System Administrator (Full Access)', perm: 'Full Access: Users & Governance' },
 };
 
 function Shell({ children }: { children: ReactNode }) {
@@ -59,7 +58,6 @@ function Shell({ children }: { children: ReactNode }) {
     { to: '/reports', label: 'Reports', icon: <BarChart3 className="h-4 w-4" />, roles: ['hod', 'finance', 'admin'] },
     { to: '/audit', label: 'Audit Log', icon: <ScrollText className="h-4 w-4" />, roles: ['hod', 'finance', 'admin'] },
     { to: '/users', label: 'Users', icon: <Users className="h-4 w-4" />, roles: ['admin'] },
-    { to: '/settings', label: 'System Admin', icon: <SettingsIcon className="h-4 w-4" />, roles: ['admin'] },
   ];
   const nav = allNav.filter((n) => !n.roles || n.roles.includes(user.role));
   const badgeCls = { count: 'bg-white/15 text-white font-mono', red: 'bg-kbz-red text-white font-bold', amber: 'bg-amber-400 text-slate-950 font-bold font-mono' };
@@ -178,7 +176,6 @@ function Gate() {
         <Route path="/reports" element={<Guard roles={['hod', 'finance', 'admin']}><ReportsPage /></Guard>} />
         <Route path="/audit" element={<Guard roles={['hod', 'finance', 'admin']}><AuditPage /></Guard>} />
         <Route path="/users" element={<Guard roles={['admin']}><UsersPage /></Guard>} />
-        <Route path="/settings" element={<Guard roles={['admin']}><SettingsPage /></Guard>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>

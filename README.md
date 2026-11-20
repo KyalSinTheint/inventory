@@ -23,7 +23,7 @@ npm run dev        # http://localhost:3000
 
 With no Supabase settings the app runs in **demo mode**. Data lives in your browser (`localStorage`), comes
 pre-filled with the BRD master data plus sample batches, deposits and assets, and you pick a demo user
-for each role on the sign-in page. *Settings → Reset demo data* restores the sample.
+for each role on the sign-in page. Clearing the site data in the browser restores the sample.
 
 | Demo user | Role |
 |---|---|
@@ -105,7 +105,7 @@ Rejecting any request sends the deposit back to Held (or back to its closed stat
   and a forfeiture notice.
 * **Maker-checker:** nobody can approve something they submitted.
 * **Retention alert:** a Held deposit is flagged from month 11 and marked *term ended* at month 12.
-  Both are configurable in **Settings**.
+  Both are stored in the `settings` table (defaults 11 and 12) and can be changed there in the SQL editor.
 * Registration checks for missing fields, a valid NRC, a License batch that is not completed, and an existing open
   deposit for the same NRC (spacing, case and Myanmar/English digits ignored).
 
@@ -142,7 +142,7 @@ again**, so a modified client cannot bypass them:
   dashboard, approvals badge). Sending email needs a server-side job, such as a Supabase Edge Function on a
   schedule with the company SMTP credentials.
 * **Midnight backups** are handled by Supabase's automatic daily backups (paid plans, Project Settings →
-  Database → Backups). Admins can also download a full JSON snapshot from **Settings**.
+  Database → Backups).
 * **100,000+ records.** The app currently loads each table into the browser and searches there. That is fine
   for thousands of records. Before data reaches the BRD's 100k scale, move list pages to server-side paging and search
   (the indexes are already in the migration).
