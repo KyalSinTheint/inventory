@@ -8,6 +8,7 @@ import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { exportWorkbook } from '../lib/export';
 import { Button, Card, Empty, ErrorNote, Field, Gauge, Modal, PageHeader, cx, useSubmit, useToast } from '../components/ui';
 import { varianceRows } from './reportSpecs';
+import { TrainingPicker } from '../components/TrainingPicker';
 
 /** The categories the L&D team tracks; the others only show when they have spend or a budget. */
 const MAIN: BudgetCategory[] = ['YCP', 'License - YGN', 'License - MDY', 'License - TGI', 'Product & Soft Skills'];
@@ -241,7 +242,7 @@ function ExpenseModal({ onClose }: { onClose: () => void }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Date" required><input className="input" type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></Field>
         <Field label="Expense type"><select className="input" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{EXPENSE_TYPES.map((c) => <option key={c}>{c}</option>)}</select></Field>
-        <Field label="Training batch" className="sm:col-span-2"><select className="input" value={f.batch_id} onChange={(e) => setF({ ...f, batch_id: e.target.value })}><option value="">No batch (choose category below)</option>{data.batches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>
+        <Field label="Training batch" className="sm:col-span-2"><TrainingPicker value={f.batch_id} onChange={(id) => setF({ ...f, batch_id: id })} batches={data.batches} none="No batch (choose category below)" /></Field>
         <Field label="Category" required className="sm:col-span-2" hint={batch ? 'Taken from the batch' : undefined}>
           {batch ? <input className="input" disabled value={budgetCategory(batch)} /> : (
             <select className="input" value={f.budget_category} onChange={(e) => setF({ ...f, budget_category: e.target.value as BudgetCategory })}>{BUDGET_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>

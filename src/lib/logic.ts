@@ -10,18 +10,18 @@ export class RuleError extends Error {}
 export type Permission =
   | 'stock.create' | 'request.create' | 'count.create' | 'deposit.create' | 'deposit.request'
   | 'asset.record' | 'expense.create' | 'approve' | 'deposit.finance' | 'budget.manage'
-  | 'batch.manage' | 'item.manage' | 'export' | 'users.manage' | 'settings.manage';
+  | 'batch.manage' | 'batch.create' | 'item.manage' | 'export' | 'users.manage' | 'settings.manage';
 
 const PERMS: Record<Role, Permission[]> = {
-  staff: ['stock.create', 'request.create', 'count.create', 'deposit.create', 'deposit.request', 'asset.record', 'expense.create'],
+  staff: ['stock.create', 'request.create', 'count.create', 'deposit.create', 'deposit.request', 'asset.record', 'expense.create', 'batch.create'],
   hod: [
     'stock.create', 'request.create', 'count.create', 'deposit.create', 'deposit.request', 'asset.record', 'expense.create',
-    'approve', 'budget.manage', 'batch.manage', 'item.manage', 'export',
+    'approve', 'budget.manage', 'batch.manage', 'batch.create', 'item.manage', 'export',
   ],
   finance: ['deposit.finance', 'export'],
   admin: [
     'stock.create', 'request.create', 'count.create', 'deposit.create', 'deposit.request', 'asset.record', 'expense.create',
-    'budget.manage', 'batch.manage', 'item.manage', 'export', 'users.manage', 'settings.manage',
+    'budget.manage', 'batch.manage', 'batch.create', 'item.manage', 'export', 'users.manage', 'settings.manage',
   ],
 };
 

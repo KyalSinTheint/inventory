@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Download, Layers, List, Plus } from 'lucide-react';
 import { useData } from '../lib/store';
-import { DEPOSIT_STATUSES, LOCATIONS, LOCATION_LABELS, TRAINEE_TYPES, type Batch, type Deposit, type Location, type TraineeType } from '../lib/types';
+import { DEPOSIT_STATUSES, LOCATION_LABELS, TRAINEE_TYPES, type Batch, type Deposit, type TraineeType } from '../lib/types';
 import { depositTotals, normalizeNrc, OPEN_STATUSES, retention } from '../lib/logic';
 import { date, mmk, monthLabel, today } from '../lib/format';
 import { DOC_ACCEPT } from '../lib/files';
@@ -11,6 +11,7 @@ import { FilePicker } from '../components/files';
 import { exportExcel, exportPdf } from '../lib/export';
 import { MonthBar } from '../components/MonthBar';
 import { depositMasterReport } from './reportSpecs';
+import { TrainingPicker } from '../components/TrainingPicker';
 
 export const batchLabel = (b: Batch | undefined) => (b ? b.name : '—');
 
@@ -151,7 +152,7 @@ function Row({ d, batch, onOpen, alert }: { d: Deposit; batch: string; onOpen: (
 export const NRC_HINT = 'e.g. 12/MaYaKa(N)123456 or ၁၂/မရက(နိုင်)၁၂၃၄၅၆';
 
 function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
-  const { data, actions, can } = useData();
+  const { data, actions } = useData();
   const toast = useToast();
   const batches = data.batches.filter((b) => b.program === 'License' && b.status !== 'Completed').sort((a, b) => b.start_date.localeCompare(a.start_date));
   const first = batches[0];
@@ -160,13 +161,8 @@ function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (i
     training_date: first?.start_date ?? today(), training_end_date: first?.end_date || first?.start_date || today(), amount: '', payment_date: today(),
   });
   const [files, setFiles] = useState<File[]>([]);
-  const [newBatch, setNewBatch] = useState(false);
   const { busy, error, run } = useSubmit();
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
-  const pickBatch = (id: string) => {
-    const b = data.batches.find((x) => x.id === id);
-    setF({ ...f, batch_id: id, training_date: b?.start_date || f.training_date, training_end_date: b?.end_date || b?.start_date || f.training_end_date });
-  };
   return (
     <Modal wide open onClose={onClose} title="Register license class deposit" footer={<>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
@@ -189,13 +185,9 @@ function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (i
         </Field>
         <Field label="NRC number" required hint={NRC_HINT}><input className="input" value={f.nrc} onChange={set('nrc')} placeholder="12/MaYaKa(N)123456" /></Field>
         <Field label="Agent code / employee ID" hint="Optional"><input className="input uppercase" value={f.agent_code} onChange={set('agent_code')} /></Field>
-        <Field label="License course batch" required hint={batches.length ? undefined : 'Create an active License batch first.'}>
-          <div className="flex gap-2">
-            <select className="input" value={f.batch_id} onChange={(e) => pickBatch(e.target.value)}>
-              {batches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-            {can('batch.manage') && <Button variant="secondary" type="button" onClick={() => setNewBatch(true)} aria-label="New batch" title="New batch"><Plus className="h-4 w-4" /></Button>}
-          </div>
+        <Field label="License course batch" required hint={batches.length ? undefined : 'Choose “+ New training” to add the License batch.'}>
+          <TrainingPicker value={f.batch_id} batches={batches} program="License" required
+            onChange={(id, b) => setF({ ...f, batch_id: id, training_date: b?.start_date || f.training_date, training_end_date: b?.end_date || b?.start_date || f.training_end_date })} />
         </Field>
         <Field label="Training start date" required hint="Defaults to the batch dates"><input className="input" type="date" value={f.training_date}
           onChange={(e) => setF({ ...f, training_date: e.target.value, training_end_date: f.training_end_date && f.training_end_date < e.target.value ? e.target.value : f.training_end_date })} /></Field>
@@ -208,28 +200,7 @@ function NewDeposit({ onClose, onCreated }: { onClose: () => void; onCreated: (i
       </div>
       <p className="mt-3 text-xs text-slate-500">The system checks for missing fields, and an existing open deposit for the same NRC before saving.</p>
       <ErrorNote error={error} />
-      {newBatch && <QuickBatch onClose={() => setNewBatch(false)} onCreated={(b) => { setNewBatch(false); setF({ ...f, batch_id: b.id, training_date: b.start_date || f.training_date, training_end_date: b.end_date || b.start_date || f.training_end_date }); }} />}
     </Modal>
   );
 }
 
-function QuickBatch({ onClose, onCreated }: { onClose: () => void; onCreated: (b: Batch) => void }) {
-  const { actions } = useData();
-  const [f, setF] = useState({ name: '', location: 'YGN' as Location, start_date: today(), end_date: '', budget: '' });
-  const { busy, error, run } = useSubmit();
-  return (
-    <Modal open onClose={onClose} title="New License batch" footer={<>
-      <Button variant="secondary" onClick={onClose}>Cancel</Button>
-      <Button busy={busy} onClick={() => run(async () => onCreated(await actions.saveBatch({ ...f, program: 'License', status: 'Active', budget: Number(f.budget) || 0 })))}>Create batch</Button>
-    </>}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Branch" required><select className="input" value={f.location} onChange={(e) => setF({ ...f, location: e.target.value as Location })}>{LOCATIONS.map((l) => <option key={l} value={l}>{l} · {LOCATION_LABELS[l]}</option>)}</select></Field>
-        <Field label="Name" required className="sm:col-span-2"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
-        <Field label="Start date"><input className="input" type="date" value={f.start_date} onChange={(e) => setF({ ...f, start_date: e.target.value })} /></Field>
-        <Field label="End date"><input className="input" type="date" value={f.end_date} onChange={(e) => setF({ ...f, end_date: e.target.value })} /></Field>
-        <Field label="Training budget (MMK)"><input className="input" type="number" min="0" value={f.budget} onChange={(e) => setF({ ...f, budget: e.target.value })} /></Field>
-      </div>
-      <ErrorNote error={error} />
-    </Modal>
-  );
-}

@@ -168,8 +168,12 @@ function makeActions(
       await audit('Delete', 'main item', id, g.label);
     },
     async saveBatch(input: Omit<Batch, 'id' | 'created_at' | 'code'> & { id?: string; code?: string }) {
-      need('batch.manage');
+      // Anyone who makes requests may add a new training by name; editing stays with HOD / Admin.
+      need(input.id ? 'batch.manage' : 'batch.create');
       if (!input.name.trim()) throw new RuleError('Training name is required.');
+      if (!input.id && !can(get().user.role, 'batch.manage') && input.budget > 0) throw new RuleError('Only HOD / Admin set a training budget.');
+      // Dates: the database needs a real date or nothing, never an empty string.
+      input = { ...input, start_date: input.start_date || new Date().toISOString().slice(0, 10), end_date: (input.end_date || null) as never };
       // Batch codes are no longer shown or typed: keep the existing one, otherwise assign the next one.
       const existingBatch = input.id ? get().data.batches.find((b) => b.id === input.id) : undefined;
       if (!input.code?.trim()) {
