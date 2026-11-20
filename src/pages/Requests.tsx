@@ -142,6 +142,9 @@ function RequestDetail({ r, onClose, onRevise }: { r: MaterialRequest; onClose: 
   );
 }
 
+/** Units that are already single pieces: no "1 box = … pcs" question for these. */
+const PIECE_UNITS = ['pcs', 'pc', 'piece', 'pieces', 'ခု', 'kg', 'g', 'set', 'ream', 'bottle', 'cup', 'sheet'];
+
 type FormLine = { text: string; item_id: string; qty: string; by_piece: boolean; unit: string; cost: string; pack: string };
 
 function RequestModal({ request, initialItem, onClose }: { request?: MaterialRequest; initialItem?: string; onClose: () => void }) {
@@ -166,7 +169,7 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
   const match = (text: string) => active.find((i) => i.name.trim().toLowerCase() === text.trim().toLowerCase());
   const toLine = (l: FormLine): RequestLine => l.item_id
     ? { item_id: l.item_id, qty: Number(l.qty), ...(l.by_piece && canSplit(item(l.item_id) ?? { pack_qty: null }) ? { by_piece: true } : {}) }
-    : { item_id: '', qty: Number(l.qty), name: l.text, unit: l.unit, ...(l.cost ? { unit_cost: Number(l.cost) } : {}), ...(Number(l.pack) > 1 ? { pack_qty: Number(l.pack) } : {}) };
+    : { item_id: '', qty: Number(l.qty), name: l.text, unit: l.unit, ...(l.cost ? { unit_cost: Number(l.cost) } : {}), ...(Number(l.pack) > 1 && l.unit.trim() && !PIECE_UNITS.includes(l.unit.trim().toLowerCase()) ? { pack_qty: Number(l.pack) } : {}) };
   const total = lines.reduce((s, l) => s + (l.qty && (l.item_id || l.text.trim()) ? lineAmount(toLine(l), data.items) : 0), 0);
   const setLine = (idx: number, patch: Partial<FormLine>) => setLines(lines.map((x, i) => (i === idx ? { ...x, ...patch } : x)));
   return (
@@ -209,51 +212,69 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
             const max = it ? (piece ? fmtPieces(it, have) : `${Math.floor(split ? have / it.pack_qty! : have)} ${it.unit}`) : '';
             const typed = !it && l.text.trim() !== '';
             return (
-              <div key={idx} className="rounded-2xl bg-slate-50/70 p-2 ring-1 ring-slate-200/70">
-                <div className="flex flex-wrap items-start gap-2">
-                  <input className="input min-w-0 flex-1 basis-56" list="store-items" value={l.text} aria-label="Item"
-                    placeholder="Type or choose an item…"
-                    onChange={(e) => { const m = match(e.target.value); setLine(idx, { text: e.target.value, item_id: m?.id ?? '', by_piece: m ? l.by_piece && canSplit(m) : false }); }} />
-                  <div className="w-24">
-                    <input className={`input text-right ${over ? 'border-red-400' : ''}`} type="number" min="1" step="1" placeholder="Qty" value={l.qty} onChange={(e) => setLine(idx, { qty: e.target.value })} aria-label="Quantity" />
-                  </div>
-                  {it && (split ? (
-                    <div className="inline-flex rounded-xl bg-slate-100 p-1 text-xs font-semibold" role="group" aria-label="Issue by">
-                      {[false, true].map((bp) => (
-                        <button key={String(bp)} type="button" aria-pressed={l.by_piece === bp} onClick={() => setLine(idx, { by_piece: bp })}
-                          className={cx('rounded-lg px-3 py-1.5 transition', l.by_piece === bp ? 'bg-white text-kbz-navy shadow-sm' : 'text-slate-500 hover:text-kbz-dark')}>
-                          {bp ? `${it.piece_unit || 'piece'}` : it.unit}
-                        </button>
-                      ))}
+              <div key={idx} className="rounded-2xl bg-slate-50/70 p-3 ring-1 ring-slate-200/70">
+                {/* Row 1: what, how many, in what unit */}
+                <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_9rem_2rem] items-end gap-2">
+                  <label className="min-w-0 text-[11px] font-semibold text-slate-500">
+                    <span className="flex items-center gap-1.5">Item {typed && <span className="rounded-full bg-amber-100 px-1.5 py-px text-[10px] text-amber-800">Not in store</span>}{it && <span className="rounded-full bg-emerald-100 px-1.5 py-px text-[10px] text-emerald-800">In store</span>}</span>
+                    <input className="input mt-1 font-normal" list="store-items" value={l.text} aria-label="Item" placeholder="Type or choose an item…"
+                      onChange={(e) => { const m = match(e.target.value); setLine(idx, { text: e.target.value, item_id: m?.id ?? '', by_piece: m ? l.by_piece && canSplit(m) : false }); }} />
+                  </label>
+                  <label className="text-[11px] font-semibold text-slate-500">Qty
+                    <input className={cx('input mt-1 text-right font-normal', over && 'border-red-400')} type="number" min="1" step="1" placeholder="0" value={l.qty} onChange={(e) => setLine(idx, { qty: e.target.value })} aria-label="Quantity" />
+                  </label>
+                  <div className="text-[11px] font-semibold text-slate-500">ယူနစ်
+                    <div className="mt-1">
+                      {it ? (split ? (
+                        <div className="flex rounded-xl bg-slate-100 p-1 text-xs font-semibold" role="group" aria-label="Issue by">
+                          {[false, true].map((bp) => (
+                            <button key={String(bp)} type="button" aria-pressed={l.by_piece === bp} onClick={() => setLine(idx, { by_piece: bp })}
+                              className={cx('flex-1 rounded-lg px-2 py-1.5 transition', l.by_piece === bp ? 'bg-white text-kbz-navy shadow-sm' : 'text-slate-500 hover:text-kbz-dark')}>
+                              {bp ? `${it.piece_unit || 'piece'}` : it.unit}
+                            </button>
+                          ))}
+                        </div>
+                      ) : <div className="input flex items-center bg-slate-100 font-normal text-slate-600">{it.unit}</div>)
+                        : <ComboInput value={l.unit} onChange={(v) => setLine(idx, { unit: v })} options={COMMON_UNITS} placeholder="box၊ pack၊ pcs…" label="Unit" className="input font-normal" />}
                     </div>
-                  ) : <span className="self-center text-sm text-slate-500">{it.unit}</span>)}
-                  {typed && <div className="w-40" title="ယူနစ် – box၊ pack၊ pcs… (ဘူး၊ ထုပ်၊ ခု)"><ComboInput value={l.unit} onChange={(v) => setLine(idx, { unit: v })} options={COMMON_UNITS} placeholder="box၊ pack၊ pcs…" label="Unit" /></div>}
-                  <button className="rounded p-2 text-slate-500 hover:bg-silver-100" onClick={() => setLines(lines.filter((_, i) => i !== idx))} aria-label="Remove line" disabled={lines.length === 1}><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                  <button className="mb-1 rounded p-2 text-slate-500 hover:bg-silver-100" onClick={() => setLines(lines.filter((_, i) => i !== idx))} aria-label="Remove line" disabled={lines.length === 1}><Trash2 className="h-4 w-4" /></button>
                 </div>
+
+                {/* Row 2: price and amount */}
                 {it && (
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 px-1 text-xs">
-                    <span className={cx(over || it.qty_on_hand <= 0 ? 'font-medium text-kbz-red' : 'text-emerald-700')}>
-                      {it.qty_on_hand <= 0 ? 'Store item · out of stock (record a Stock in first)' : over ? `Store item · only ${max} available` : `Store item · ${fmtQty(it, it.qty_on_hand)} available`}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                    <span className={cx(over || it.qty_on_hand <= 0 ? 'font-semibold text-kbz-red' : 'text-emerald-700')}>
+                      {it.qty_on_hand <= 0 ? 'Out of stock (record a Stock in first)' : over ? `Only ${max} in store` : `${fmtQty(it, it.qty_on_hand)} in store`}
                     </span>
-                    <span className="text-slate-500">Unit: <b className="text-slate-700">{it.unit}{split ? ` of ${it.pack_qty} ${it.piece_unit || 'piece'}s` : ''}</b></span>
-                    <span className="text-slate-500">Price: <b className="text-slate-700">{num(it.unit_cost)} MMK / {it.unit}</b></span>
-                    {split && <span className="text-slate-500">Per {it.piece_unit || 'piece'}: <b className="text-slate-700">{(Math.round((it.unit_cost / it.pack_qty!) * 100) / 100).toLocaleString('en-US')} MMK</b></span>}
-                    {l.qty && <span className="ml-auto text-slate-500">Amount: <b className="text-kbz-blue">{num(Math.round(lineAmount(toLine(l), data.items)))} MMK</b></span>}
+                    <span>Price: <b className="text-slate-700">{num(it.unit_cost)} MMK / {it.unit}</b></span>
+                    {split && <span>= <b className="text-slate-700">{(Math.round((it.unit_cost / it.pack_qty!) * 100) / 100).toLocaleString('en-US')} MMK / {it.piece_unit || 'piece'}</b> <span className="text-slate-400">(1 {it.unit} = {it.pack_qty} {it.piece_unit || 'piece'}s)</span></span>}
+                    {l.qty && <span className="ml-auto">Amount <b className="text-sm text-kbz-blue">{num(Math.round(lineAmount(toLine(l), data.items)))} MMK</b></span>}
                   </div>
                 )}
-                {typed && (
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-slate-500">
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">Not in store</span>
-                    <label className="flex items-center gap-1.5">Price / {l.unit.trim() || 'unit'}
-                      <input className="input w-28 py-1 text-right" type="number" min="0" value={l.cost} onChange={(e) => setLine(idx, { cost: e.target.value })} placeholder="MMK" aria-label="Price per unit" />
-                    </label>
-                    <label className="flex items-center gap-1.5">Pieces in one {l.unit.trim() || 'unit'}
-                      <input className="input w-20 py-1 text-right" type="number" min="2" step="1" value={l.pack} onChange={(e) => setLine(idx, { pack: e.target.value })} placeholder="opt." aria-label="Pieces in one unit" />
-                    </label>
-                    {Number(l.pack) > 1 && Number(l.cost) > 0 && <span>Per piece: <b className="text-slate-700">{(Math.round((Number(l.cost) / Number(l.pack)) * 100) / 100).toLocaleString('en-US')} MMK</b></span>}
-                    {l.qty && Number(l.cost) > 0 && <span className="ml-auto">Amount: <b className="text-kbz-blue">{num(Math.round(Number(l.qty) * Number(l.cost)))} MMK</b></span>}
-                  </div>
-                )}
+                {typed && (() => {
+                  const unit = l.unit.trim() || 'unit';
+                  // "1 box = 20 pcs" only makes sense for a unit that holds pieces.
+                  const holdsPieces = !!l.unit.trim() && !PIECE_UNITS.includes(l.unit.trim().toLowerCase());
+                  return (
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
+                      <label className="flex items-center gap-1.5">Price per {unit}
+                        <span className="relative">
+                          <input className="input w-32 py-1.5 pr-11 text-right" type="number" min="0" value={l.cost} onChange={(e) => setLine(idx, { cost: e.target.value })} placeholder="0" aria-label="Price per unit" />
+                          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">MMK</span>
+                        </span>
+                      </label>
+                      {holdsPieces && (
+                        <label className="flex items-center gap-1.5">1 {unit} =
+                          <input className="input w-16 py-1.5 text-right" type="number" min="2" step="1" value={l.pack} onChange={(e) => setLine(idx, { pack: e.target.value })} placeholder="?" aria-label="Pieces in one unit" />
+                          pcs <span className="text-slate-400">(optional)</span>
+                        </label>
+                      )}
+                      {holdsPieces && Number(l.pack) > 1 && Number(l.cost) > 0 && <span>= <b className="text-slate-700">{(Math.round((Number(l.cost) / Number(l.pack)) * 100) / 100).toLocaleString('en-US')} MMK / pc</b></span>}
+                      {l.qty && Number(l.cost) > 0 && <span className="ml-auto">Amount <b className="text-sm text-kbz-blue">{num(Math.round(Number(l.qty) * Number(l.cost)))} MMK</b></span>}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
