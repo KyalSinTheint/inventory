@@ -229,7 +229,10 @@ export function supabaseAdapter(url: string, key: string): DataAdapter {
 }
 
 export function createAdapter(): DataAdapter {
-  const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+  const env = import.meta.env as Record<string, string | undefined>;
+  const url = env.VITE_SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
+  // Legacy anon key or the newer publishable key (sb_publishable_…): both are safe in the browser.
+  const key = env.VITE_SUPABASE_ANON_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY
+    || env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   return url && key ? supabaseAdapter(url, key) : demoAdapter();
 }
