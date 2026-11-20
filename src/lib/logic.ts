@@ -69,6 +69,7 @@ export function checkAvailability(lines: RequestLine[], items: Item[]): string[]
   // Count in pieces for items that are split, so "1 pack + 5 sachets" is compared exactly.
   const need = new Map<string, number>();
   for (const l of lines) {
+    if (isCustomLine(l)) continue; // typed items are not taken from the store
     const it = items.find((i) => i.id === l.item_id);
     need.set(l.item_id, (need.get(l.item_id) ?? 0) + (it ? linePieces(l, it) : l.qty));
   }
@@ -86,7 +87,8 @@ export function checkAvailability(lines: RequestLine[], items: Item[]): string[]
 export function validateLines(lines: RequestLine[]): void {
   if (lines.length === 0) throw new RuleError('Add at least one item.');
   for (const l of lines) {
-    if (!l.item_id) throw new RuleError('Choose an item on every line.');
+    if (!l.item_id && !l.name?.trim()) throw new RuleError('Type or choose an item on every line.');
+    if (l.unit_cost !== undefined && (!Number.isFinite(l.unit_cost) || l.unit_cost < 0)) throw new RuleError('The cost per unit cannot be negative.');
     if (!Number.isInteger(l.qty) || l.qty <= 0) throw new RuleError('Quantities must be whole numbers above zero.');
   }
 }
@@ -370,7 +372,11 @@ export function pendingCount(statuses: { status: ApprovalStatus }[]): number {
 }
 
 export function requestValue(r: MaterialRequest, items: Item[]): number {
-  return r.lines.reduce((s, l) => { const it = items.find((i) => i.id === l.item_id); return s + (it ? lineValue(l, it) : 0); }, 0);
+  return r.lines.reduce((s, l) => {
+    if (isCustomLine(l)) return s + l.qty * (l.unit_cost ?? 0);
+    const it = items.find((i) => i.id === l.item_id);
+    return s + (it ? lineValue(l, it) : 0);
+  }, 0);
 }
 
 // ---------------------------------------------------------------- categories & months
@@ -432,11 +438,30 @@ export function piecePrice(item: { unit_cost: number; pack_qty: number | null })
 }
 
 /** True when a request line asks for more than is on hand (compared in pieces for split items). */
-export function lineShort(l: Pick<RequestLine, 'qty' | 'by_piece'>, it: Item | undefined): boolean {
+export function lineShort(l: Pick<RequestLine, 'item_id' | 'qty' | 'by_piece'>, it: Item | undefined): boolean {
+  if (isCustomLine(l)) return false;
   if (!it) return true;
   return linePieces(l, it) > (canSplit(it) ? piecesIn(it, it.qty_on_hand) : it.qty_on_hand);
 }
 /** A stock movement in words, using the pieces it was entered in when there are any. */
 export function fmtTxnQty(t: Pick<StockTxn, 'qty' | 'piece_qty'>, it: Pick<Item, 'unit' | 'pack_qty' | 'piece_unit'>): string {
   return t.piece_qty ? fmtPieces(it, t.piece_qty) : fmtQty(it, Math.abs(t.qty));
+}
+
+/** A typed item that is not in the store (no stock is issued for it). */
+export const isCustomLine = (l: Pick<RequestLine, 'item_id'>) => !l.item_id;
+/** Name of a request line's item, store item or typed. */
+export const lineName = (l: Pick<RequestLine, 'item_id' | 'name'>, items: Item[]) =>
+  l.item_id ? items.find((i) => i.id === l.item_id)?.name ?? 'Item' : l.name?.trim() || 'Item';
+/** Quantity of a request line in words, store item or typed ("3 boxes"). */
+export function lineQtyText(l: RequestLine, items: Item[]): string {
+  const it = l.item_id ? items.find((i) => i.id === l.item_id) : undefined;
+  if (it) return fmtLine(l, it);
+  return `${l.qty.toLocaleString('en-US')}${l.unit?.trim() ? ` ${l.unit.trim()}` : ''}`;
+}
+/** Value of one request line (typed items use their estimated cost per unit). */
+export function lineAmount(l: RequestLine, items: Item[]): number {
+  if (isCustomLine(l)) return l.qty * (l.unit_cost ?? 0);
+  const it = items.find((i) => i.id === l.item_id);
+  return it ? lineValue(l, it) : 0;
 }

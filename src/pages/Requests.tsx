@@ -4,7 +4,7 @@ import { ClipboardList, Pencil, Plus, Trash2 } from 'lucide-react';
 import { GlassArea, notchMask } from '../components/glass';
 import { useData } from '../lib/store';
 import { CATEGORIES, type MaterialRequest, type RequestLine } from '../lib/types';
-import { canSplit, fmtLine, fmtPieces, fmtQty, linePieces, lineValue, piecesIn, requestValue } from '../lib/logic';
+import { canSplit, fmtPieces, fmtQty, isCustomLine, lineAmount, lineName, lineQtyText, linePieces, lineShort, piecesIn, requestValue } from '../lib/logic';
 import { date, mmk, monthLabel, num } from '../lib/format';
 import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { FileLink, FilePicker } from '../components/files';
@@ -126,12 +126,12 @@ function RequestDetail({ r, onClose, onRevise }: { r: MaterialRequest; onClose: 
       <ul className="divide-y divide-slate-100 rounded-2xl ring-1 ring-slate-200">
         {r.lines.map((l, idx) => {
           const it = item(l.item_id);
-          const short = r.status === 'Pending' && !!it && linePieces(l, it) > (canSplit(it) ? piecesIn(it, it.qty_on_hand) : it.qty_on_hand);
+          const short = r.status === 'Pending' && lineShort(l, it);
           return (
             <li key={idx} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-sm">
-              <span className="min-w-0 flex-1 truncate font-medium text-kbz-dark">{it?.name ?? 'Item'}</span>
-              <b className="tabular-nums">{it ? fmtLine(l, it) : num(l.qty)}</b>
-              <span className="w-28 text-right tabular-nums text-slate-500">{num(Math.round(it ? lineValue(l, it) : 0))} MMK</span>
+              <span className="min-w-0 flex-1 truncate font-medium text-kbz-dark">{lineName(l, data.items)}{isCustomLine(l) && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Not in store</span>}</span>
+              <b className="tabular-nums">{lineQtyText(l, data.items)}</b>
+              <span className="w-28 text-right tabular-nums text-slate-500">{num(Math.round(lineAmount(l, data.items)))} MMK</span>
               {r.status === 'Pending' && it && <span className={cx('w-32 text-right text-xs', short ? 'font-semibold text-kbz-red' : 'text-slate-400')}>{fmtQty(it, it.qty_on_hand)} on hand</span>}
             </li>
           );
@@ -142,7 +142,7 @@ function RequestDetail({ r, onClose, onRevise }: { r: MaterialRequest; onClose: 
   );
 }
 
-type FormLine = { item_id: string; qty: string; by_piece: boolean };
+type FormLine = { text: string; item_id: string; qty: string; by_piece: boolean; unit: string; cost: string };
 
 function RequestModal({ request, initialItem, onClose }: { request?: MaterialRequest; initialItem?: string; onClose: () => void }) {
   const { data, actions } = useData();
@@ -153,18 +153,27 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
   const [remarks, setRemarks] = useState(request?.remarks ?? '');
   const [file, setFile] = useState<File[]>([]);
   const [removeFile, setRemoveFile] = useState(false);
-  const [lines, setLines] = useState<FormLine[]>(request?.lines.map((l) => ({ item_id: l.item_id, qty: String(l.qty), by_piece: !!l.by_piece })) ?? [{ item_id: initialItem && data.items.some((i) => i.id === initialItem) ? initialItem : '', qty: '', by_piece: false }]);
-  const { busy, error, run } = useSubmit();
   const item = (id: string) => data.items.find((i) => i.id === id);
-  const toLine = (l: FormLine): RequestLine => ({ item_id: l.item_id, qty: Number(l.qty), ...(l.by_piece && canSplit(item(l.item_id) ?? { pack_qty: null }) ? { by_piece: true } : {}) });
-  const total = lines.reduce((s, l) => { const it = item(l.item_id); return s + (it && l.qty ? lineValue(toLine(l), it) : 0); }, 0);
+  const active = data.items.filter((i) => i.active);
+  const blank: FormLine = { text: '', item_id: '', qty: '', by_piece: false, unit: '', cost: '' };
+  const [lines, setLines] = useState<FormLine[]>(() => request?.lines.map((l) => ({
+    text: l.item_id ? item(l.item_id)?.name ?? '' : l.name ?? '', item_id: l.item_id, qty: String(l.qty), by_piece: !!l.by_piece,
+    unit: l.unit ?? '', cost: l.unit_cost ? String(l.unit_cost) : '',
+  })) ?? [initialItem && item(initialItem) ? { ...blank, text: item(initialItem)!.name, item_id: initialItem } : blank]);
+  const { busy, error, run } = useSubmit();
+  // Typing the exact name of a store item links the line to it; anything else is a typed item.
+  const match = (text: string) => active.find((i) => i.name.trim().toLowerCase() === text.trim().toLowerCase());
+  const toLine = (l: FormLine): RequestLine => l.item_id
+    ? { item_id: l.item_id, qty: Number(l.qty), ...(l.by_piece && canSplit(item(l.item_id) ?? { pack_qty: null }) ? { by_piece: true } : {}) }
+    : { item_id: '', qty: Number(l.qty), name: l.text, unit: l.unit, ...(l.cost ? { unit_cost: Number(l.cost) } : {}) };
+  const total = lines.reduce((s, l) => s + (l.qty && (l.item_id || l.text.trim()) ? lineAmount(toLine(l), data.items) : 0), 0);
   const setLine = (idx: number, patch: Partial<FormLine>) => setLines(lines.map((x, i) => (i === idx ? { ...x, ...patch } : x)));
   return (
     <Modal wide open onClose={onClose} title={request ? 'Revise material request' : 'New material request'} footer={<>
       <span className="mr-auto self-center text-sm text-slate-600">Estimated value: <b>{mmk(total)}</b></span>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
       <Button busy={busy} onClick={() => run(async () => {
-        await actions.saveRequest({ id: request?.id, batch_id: batchId, purpose, remarks, lines: lines.map(toLine) },
+        await actions.saveRequest({ id: request?.id, batch_id: batchId, purpose, remarks, lines: lines.filter((l) => l.item_id || l.text.trim() || l.qty).map(toLine) },
           file[0] ?? (removeFile ? null : undefined));
         toast('Request sent to HOD for approval'); onClose();
       })}>Submit for approval</Button>
@@ -179,50 +188,64 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
           ) : <FilePicker files={file} onChange={setFile} accept={EXCEL_ACCEPT} label="Attach Excel file…" />}
         </Field>
       </div>
-      <div className="mt-4 space-y-2">
-        {lines.map((l, idx) => {
-          const it = item(l.item_id);
-          const split = !!it && canSplit(it);
-          const piece = split && l.by_piece;
-          const have = it ? (split ? piecesIn(it, it.qty_on_hand) : it.qty_on_hand) : 0;
-          const want = it && l.qty ? linePieces(toLine(l), it) : 0;
-          const over = !!it && want > have;
-          const max = it ? (piece ? fmtPieces(it, have) : `${Math.floor(split ? have / it.pack_qty! : have)} ${it.unit}`) : '';
-          return (
-            <div key={idx} className="flex flex-wrap items-start gap-2">
-              <select className="input min-w-0 flex-1 basis-56" value={l.item_id} onChange={(e) => setLine(idx, { item_id: e.target.value, by_piece: false })} aria-label="Item">
-                <option value="">Choose item…</option>
-                {CATEGORIES.map((c) => {
-                  const list = data.items.filter((i) => i.category === c && i.active);
-                  return list.length ? <optgroup key={c} label={c}>{list.map((i) => <option key={i.id} value={i.id} disabled={i.qty_on_hand <= 0}>{i.name} {i.qty_on_hand > 0 ? `(${fmtQty(i, i.qty_on_hand)} available)` : '(out of stock)'}</option>)}</optgroup> : null;
-                })}
-              </select>
-              <div className="w-24">
-                <input className={`input text-right ${over ? 'border-red-400' : ''}`} type="number" min="1" step="1" placeholder="Qty" value={l.qty} onChange={(e) => setLine(idx, { qty: e.target.value })} aria-label="Quantity" />
-                {over && <div className="mt-0.5 text-xs text-red-600">Max {max}</div>}
-              </div>
-              {it && (split ? (
-                <div className="inline-flex rounded-xl bg-slate-100 p-1 text-xs font-semibold" role="group" aria-label="Issue by">
-                  {[false, true].map((bp) => (
-                    <button key={String(bp)} type="button" aria-pressed={l.by_piece === bp} onClick={() => setLine(idx, { by_piece: bp })}
-                      className={cx('rounded-lg px-3 py-1.5 transition', l.by_piece === bp ? 'bg-white text-kbz-navy shadow-sm' : 'text-slate-500 hover:text-kbz-dark')}>
-                      {bp ? `${it.piece_unit || 'piece'}` : it.unit}
-                    </button>
-                  ))}
+      <div className="mt-4">
+        <h4 className="text-sm font-semibold text-kbz-dark">Items</h4>
+        <p className="mb-2 text-xs text-slate-500">Type any item, or pick one from the store list that appears as you type. Typed items that are not in the store are approved without taking stock.</p>
+        <datalist id="store-items">
+          {CATEGORIES.flatMap((c) => active.filter((i) => i.category === c).map((i) => (
+            <option key={i.id} value={i.name}>{i.qty_on_hand > 0 ? `${fmtQty(i, i.qty_on_hand)} in store` : 'out of stock'}</option>
+          )))}
+        </datalist>
+        <div className="space-y-3">
+          {lines.map((l, idx) => {
+            const it = l.item_id ? item(l.item_id) : undefined;
+            const split = !!it && canSplit(it);
+            const piece = split && l.by_piece;
+            const have = it ? (split ? piecesIn(it, it.qty_on_hand) : it.qty_on_hand) : 0;
+            const want = it && l.qty ? linePieces(toLine(l), it) : 0;
+            const over = !!it && want > have;
+            const max = it ? (piece ? fmtPieces(it, have) : `${Math.floor(split ? have / it.pack_qty! : have)} ${it.unit}`) : '';
+            const typed = !it && l.text.trim() !== '';
+            return (
+              <div key={idx} className="rounded-2xl bg-slate-50/70 p-2 ring-1 ring-slate-200/70">
+                <div className="flex flex-wrap items-start gap-2">
+                  <input className="input min-w-0 flex-1 basis-56" list="store-items" value={l.text} aria-label="Item"
+                    placeholder="Type or choose an item…"
+                    onChange={(e) => { const m = match(e.target.value); setLine(idx, { text: e.target.value, item_id: m?.id ?? '', by_piece: m ? l.by_piece && canSplit(m) : false }); }} />
+                  <div className="w-24">
+                    <input className={`input text-right ${over ? 'border-red-400' : ''}`} type="number" min="1" step="1" placeholder="Qty" value={l.qty} onChange={(e) => setLine(idx, { qty: e.target.value })} aria-label="Quantity" />
+                  </div>
+                  {it && (split ? (
+                    <div className="inline-flex rounded-xl bg-slate-100 p-1 text-xs font-semibold" role="group" aria-label="Issue by">
+                      {[false, true].map((bp) => (
+                        <button key={String(bp)} type="button" aria-pressed={l.by_piece === bp} onClick={() => setLine(idx, { by_piece: bp })}
+                          className={cx('rounded-lg px-3 py-1.5 transition', l.by_piece === bp ? 'bg-white text-kbz-navy shadow-sm' : 'text-slate-500 hover:text-kbz-dark')}>
+                          {bp ? `${it.piece_unit || 'piece'}` : it.unit}
+                        </button>
+                      ))}
+                    </div>
+                  ) : <span className="self-center text-sm text-slate-500">{it.unit}</span>)}
+                  {typed && <input className="input w-24" value={l.unit} onChange={(e) => setLine(idx, { unit: e.target.value })} placeholder="Unit" aria-label="Unit" />}
+                  <button className="rounded p-2 text-slate-500 hover:bg-silver-100" onClick={() => setLines(lines.filter((_, i) => i !== idx))} aria-label="Remove line" disabled={lines.length === 1}><Trash2 className="h-4 w-4" /></button>
                 </div>
-              ) : <span className="self-center text-sm text-slate-500">{it.unit}</span>)}
-              <button className="rounded p-2 text-slate-500 hover:bg-silver-100" onClick={() => setLines(lines.filter((_, i) => i !== idx))} aria-label="Remove line" disabled={lines.length === 1}><Trash2 className="h-4 w-4" /></button>
-            </div>
-          );
-        })}
-        {(() => {
-          // Say why the list is empty or greyed out instead of leaving an unusable dropdown.
-          const active = data.items.filter((i) => i.active);
-          if (!active.length) return <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">No items yet. Add items in <b>Inventory</b> first (HOD / Admin), then record their stock with <b>Stock in</b>.</p>;
-          if (!active.some((i) => i.qty_on_hand > 0)) return <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">Nothing is in stock yet, so items cannot be chosen. Record stock with <b>Inventory → Stock in</b>; it counts once the HOD approves it.</p>;
-          return null;
-        })()}
-        <Button size="sm" variant="ghost" onClick={() => setLines([...lines, { item_id: '', qty: '', by_piece: false }])}><Plus className="h-4 w-4" />Add item</Button>
+                {it && (
+                  <p className={cx('mt-1 px-1 text-xs', over || it.qty_on_hand <= 0 ? 'font-medium text-kbz-red' : 'text-emerald-700')}>
+                    {it.qty_on_hand <= 0 ? 'Store item · out of stock (record a Stock in first)' : over ? `Store item · only ${max} available` : `Store item · ${fmtQty(it, it.qty_on_hand)} available`}
+                  </p>
+                )}
+                {typed && (
+                  <div className="mt-1 flex flex-wrap items-center gap-2 px-1 text-xs text-slate-500">
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">Not in store</span>
+                    <label className="flex items-center gap-1.5">Estimated cost / unit
+                      <input className="input w-28 py-1 text-right" type="number" min="0" value={l.cost} onChange={(e) => setLine(idx, { cost: e.target.value })} placeholder="MMK" aria-label="Estimated cost per unit" />
+                    </label>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <Button size="sm" variant="ghost" className="mt-2" onClick={() => setLines([...lines, blank])}><Plus className="h-4 w-4" />Add item</Button>
       </div>
       <ErrorNote error={error} />
     </Modal>

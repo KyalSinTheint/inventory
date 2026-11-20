@@ -3,7 +3,7 @@ import { createAdapter, type DataAdapter } from './db';
 import { compressImage } from './files';
 import { BUILTIN_IDS, groupOf, groupsFor, guessGroup, ICONS } from './itemGroups';
 import {
-  applyDelta, budgetCategory, can, canSplit, checkAvailability, fmtPieces, fmtQty, linePieces, pieceChange, piecesIn, r6, depositTransition, isValidNrc, nextRef, validateTrainingDates, normalizeNrc, RuleError, stockDelta, validateLines, validateNewDeposit,
+  applyDelta, budgetCategory, can, canSplit, checkAvailability, fmtPieces, fmtQty, linePieces, pieceChange, piecesIn, r6, depositTransition, isCustomLine, isValidNrc, nextRef, validateTrainingDates, normalizeNrc, RuleError, stockDelta, validateLines, validateNewDeposit,
   type DepositAction, type Permission,
 } from './logic';
 import type {
@@ -274,7 +274,11 @@ function makeActions(
     /** file: a new attachment, null to remove it, undefined to keep the current one. */
     async saveRequest(input: { id?: string; batch_id: string; purpose: string; remarks: string; lines: RequestLine[] }, file?: File | null) {
       need('request.create');
-      const lines = input.lines.filter((l) => l.item_id).map((l) => {
+      const lines: RequestLine[] = input.lines.filter((l) => l.item_id || l.name?.trim()).map((l) => {
+        if (!l.item_id) {
+          // Typed item that is not in the store: keep its name, unit and estimated cost.
+          return { item_id: '', qty: l.qty, name: l.name!.trim(), ...(l.unit?.trim() ? { unit: l.unit.trim() } : {}), ...(l.unit_cost ? { unit_cost: l.unit_cost } : {}) };
+        }
         const it = get().data.items.find((i) => i.id === l.item_id);
         return it && canSplit(it) && l.by_piece ? { item_id: l.item_id, qty: l.qty, by_piece: true } : { item_id: l.item_id, qty: l.qty };
       });
@@ -314,6 +318,7 @@ function makeActions(
       const short = checkAvailability(r.lines, get().data.items);
       if (short.length) throw new RuleError(`Cannot issue, stock has changed: ${short.join('; ')}`);
       for (const l of r.lines) {
+        if (isCustomLine(l)) continue; // typed items are approved but not taken from the store
         const it = item(l.item_id);
         // Single pieces leave the pack: work out the part of a unit so the balance stays a whole number of pieces.
         const pieces = canSplit(it) && l.by_piece ? l.qty : null;
@@ -325,7 +330,7 @@ function makeActions(
         await syncStock(t);
       }
       const saved = await update('material_requests', id, { status: 'Approved', decided_by: get().user.id, decided_at: nowIso(), decision_note: note.trim() || null });
-      await audit('Approve & issue', 'material_request', id, `${r.ref}: ${r.lines.length} lines issued`);
+      await audit('Approve & issue', 'material_request', id, `${r.ref}: ${r.lines.filter((l) => !isCustomLine(l)).length} lines issued from store${r.lines.some(isCustomLine) ? `, ${r.lines.filter(isCustomLine).length} typed item(s) approved` : ''}`);
       return saved;
     },
     async submitCount(input: { month: string; lines: CountLine[]; note: string }) {

@@ -124,6 +124,10 @@ export interface RequestLine {
   qty: number;
   /** True when qty counts single pieces taken out of a pack (e.g. 5 sachets), not whole units. */
   by_piece?: boolean;
+  /** Typed item that is not in the store (item_id is ''): its name, unit and estimated cost per unit. */
+  name?: string;
+  unit?: string;
+  unit_cost?: number;
 }
 
 export interface MaterialRequest {

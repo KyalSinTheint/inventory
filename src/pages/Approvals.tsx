@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { useData } from '../lib/store';
 import { TXN_LABELS } from '../lib/types';
-import { fmtLine, fmtQty, fmtTxnQty, lineShort, requestValue, txnValue } from '../lib/logic';
+import { fmtQty, fmtTxnQty, lineName, lineQtyText, lineShort, requestValue, txnValue } from '../lib/logic';
 import { date, mmk, monthLabel, num } from '../lib/format';
 import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { Badge, Button, Card, Empty, ErrorNote, Field, Modal, PageHeader, StatusBadge, useSubmit, useToast } from '../components/ui';
@@ -66,7 +66,7 @@ export default function ApprovalsPage() {
                         {r.remarks && <div className="mt-1 whitespace-pre-line text-xs text-slate-600">{r.remarks}</div>}
                         {r.attachment && <div className="mt-1 text-xs"><FileLink att={r.attachment} /></div>}
                         <ul className="mt-1.5 flex flex-wrap gap-1.5">
-                          {r.lines.map((l, i) => { const it = item(l.item_id); const bad = lineShort(l, it); return <li key={i} className={`rounded-md px-2 py-0.5 text-xs ${bad ? 'bg-red-50 text-red-700' : 'bg-silver-100'}`}>{it?.name} × {it ? fmtLine(l, it) : num(l.qty)} <span className="text-slate-500">({it ? fmtQty(it, it.qty_on_hand) : 0} on hand)</span></li>; })}
+                          {r.lines.map((l, i) => { const it = item(l.item_id); const bad = lineShort(l, it); return <li key={i} className={`rounded-md px-2 py-0.5 text-xs ${bad ? 'bg-red-50 text-red-700' : 'bg-silver-100'}`}>{lineName(l, data.items)} × {lineQtyText(l, data.items)} <span className="text-slate-500">({it ? `${fmtQty(it, it.qty_on_hand)} on hand` : 'not in store'})</span></li>; })}
                         </ul>
                         {short.length > 0 && <div className="mt-1 text-xs text-red-600">Not enough stock to issue: reject or wait for a stock in.</div>}
                       </div>
