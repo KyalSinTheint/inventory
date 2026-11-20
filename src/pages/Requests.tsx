@@ -226,7 +226,7 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
                       ))}
                     </div>
                   ) : <span className="self-center text-sm text-slate-500">{it.unit}</span>)}
-                  {typed && <input className="input w-24" value={l.unit} onChange={(e) => setLine(idx, { unit: e.target.value })} placeholder="Unit" aria-label="Unit" />}
+                  {typed && <input className="input w-36" value={l.unit} onChange={(e) => setLine(idx, { unit: e.target.value })} placeholder="ယူနစ်" aria-label="Unit" title="ယူနစ် – ဘူး၊ ထုပ်၊ ခု စသဖြင့်" />}
                   <button className="rounded p-2 text-slate-500 hover:bg-silver-100" onClick={() => setLines(lines.filter((_, i) => i !== idx))} aria-label="Remove line" disabled={lines.length === 1}><Trash2 className="h-4 w-4" /></button>
                 </div>
                 {it && (
