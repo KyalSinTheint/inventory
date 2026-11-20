@@ -192,7 +192,10 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
             <div key={idx} className="flex flex-wrap items-start gap-2">
               <select className="input min-w-0 flex-1 basis-56" value={l.item_id} onChange={(e) => setLine(idx, { item_id: e.target.value, by_piece: false })} aria-label="Item">
                 <option value="">Choose item…</option>
-                {CATEGORIES.map((c) => <optgroup key={c} label={c}>{data.items.filter((i) => i.category === c && i.active).map((i) => <option key={i.id} value={i.id} disabled={i.qty_on_hand <= 0}>{i.name} ({fmtQty(i, i.qty_on_hand)} available)</option>)}</optgroup>)}
+                {CATEGORIES.map((c) => {
+                  const list = data.items.filter((i) => i.category === c && i.active);
+                  return list.length ? <optgroup key={c} label={c}>{list.map((i) => <option key={i.id} value={i.id} disabled={i.qty_on_hand <= 0}>{i.name} {i.qty_on_hand > 0 ? `(${fmtQty(i, i.qty_on_hand)} available)` : '(out of stock)'}</option>)}</optgroup> : null;
+                })}
               </select>
               <div className="w-24">
                 <input className={`input text-right ${over ? 'border-red-400' : ''}`} type="number" min="1" step="1" placeholder="Qty" value={l.qty} onChange={(e) => setLine(idx, { qty: e.target.value })} aria-label="Quantity" />
@@ -212,6 +215,13 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
             </div>
           );
         })}
+        {(() => {
+          // Say why the list is empty or greyed out instead of leaving an unusable dropdown.
+          const active = data.items.filter((i) => i.active);
+          if (!active.length) return <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">No items yet. Add items in <b>Inventory</b> first (HOD / Admin), then record their stock with <b>Stock in</b>.</p>;
+          if (!active.some((i) => i.qty_on_hand > 0)) return <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">Nothing is in stock yet, so items cannot be chosen. Record stock with <b>Inventory → Stock in</b>; it counts once the HOD approves it.</p>;
+          return null;
+        })()}
         <Button size="sm" variant="ghost" onClick={() => setLines([...lines, { item_id: '', qty: '', by_piece: false }])}><Plus className="h-4 w-4" />Add item</Button>
       </div>
       <ErrorNote error={error} />
