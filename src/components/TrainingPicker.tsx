@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
 import { useData } from '../lib/store';
-import { LOCATIONS, LOCATION_LABELS, type Batch, type Location, type Program } from '../lib/types';
-import { date, today } from '../lib/format';
+import { LOCATIONS, LOCATION_LABELS, PROGRAMS, type Batch, type Location, type Program } from '../lib/types';
+import { today } from '../lib/format';
 import { Button, ErrorNote, useSubmit, useToast } from './ui';
 import { programsOf, tidyChoice } from '../lib/choices';
 import { ComboInput } from './ComboInput';
@@ -55,7 +55,9 @@ export function TrainingPicker({ value, onChange, batches, program, none, requir
   const [f, setF] = useState({ program: program ?? '', location: 'YGN' as Location, start_date: today(), end_date: '' });
   const { busy, error, run } = useSubmit();
   // A program is optional: a typed training without one is filed under "Other".
-  const prog = program ?? (tidyChoice(f.program, programs) || 'Other');
+  // A training typed as a program's name (e.g. "YCP") belongs to that program.
+  const namedProgram = PROGRAMS.find((p) => p.toLowerCase() === text.trim().toLowerCase());
+  const prog = program ?? (tidyChoice(f.program, programs) || namedProgram || 'Other');
   const match = (t: string) => batches.find((b) => b.name.trim().toLowerCase() === t.trim().toLowerCase());
 
   // Follow a value chosen elsewhere (e.g. the form was reset).
@@ -83,9 +85,6 @@ export function TrainingPicker({ value, onChange, batches, program, none, requir
     <div>
       <input className="input" value={text} required={required} aria-label="Training"
         placeholder={none ?? 'Type the training name…'} onChange={(e) => setText(e.target.value)} />
-      {matched && (
-        <p className="mt-1 text-xs text-emerald-700">{[matched.program, matched.location, matched.start_date && `${date(matched.start_date)}${matched.end_date ? ` – ${date(matched.end_date)}` : ''}`].filter(Boolean).join(' · ')}</p>
-      )}
       {typedNew && (allowed ? (
         <div className="mt-1 text-xs text-slate-500">
           <span>New training · saved with the form.</span>{' '}
