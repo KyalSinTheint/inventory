@@ -3,11 +3,10 @@ import { Download, Plus } from 'lucide-react';
 import { useData } from '../lib/store';
 import { BUDGET_CATEGORIES, EXPENSE_TYPES, type BudgetCategory } from '../lib/types';
 import { budgetCategory, categoryActuals, monthlySpend, utilizationPct, variancePct, yearActual } from '../lib/logic';
-import { date, mmk, monthLabel, num, overlapsMonth, pct, today } from '../lib/format';
+import { date, mmk, monthLabel, num, pct, today } from '../lib/format';
 import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { exportWorkbook } from '../lib/export';
 import { Button, Card, Empty, ErrorNote, Field, Gauge, Modal, PageHeader, cx, useSubmit, useToast } from '../components/ui';
-import { varianceRows } from './reportSpecs';
 import { TrainingPicker, useTrainingDraft } from '../components/TrainingPicker';
 
 /** The categories the L&D team tracks; the others only show when they have spend or a budget. */
@@ -33,8 +32,6 @@ export default function BudgetPage() {
   const catRows = BUDGET_CATEGORIES
     .map((c) => ({ c, budget: budgetOf(c)?.amount ?? 0, a: cats.get(c) ?? { materials: 0, expenses: 0, total: 0 } }))
     .filter((r) => MAIN.includes(r.c) || r.budget || r.a.total);
-  const batchRows = varianceRows(data).filter((r) => (month ? overlapsMonth(month, r.batch.start_date, r.batch.end_date)
-    : r.batch.start_date.startsWith(String(year)) || r.batch.end_date.startsWith(String(year))));
   const expenses = data.expenses
     .filter((e) => e.date.startsWith(month || String(year)) && (!catFilter || e.budget_category === catFilter))
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -52,10 +49,6 @@ export default function BudgetPage() {
     ['Category', 'Budget', 'Materials issued', 'Expenses', 'Actual', 'Remaining', 'Used %'],
     ...catRows.map((r) => [r.c, r.budget, r.a.materials, r.a.expenses, r.a.total, r.budget ? r.budget - r.a.total : '', r.budget ? `${utilizationPct(r.budget, r.a.total).toFixed(1)}%` : '']),
     ['Total', catRows.reduce((s, r) => s + r.budget, 0), catRows.reduce((s, r) => s + r.a.materials, 0), catRows.reduce((s, r) => s + r.a.expenses, 0), catRows.reduce((s, r) => s + r.a.total, 0), '', ''],
-  ];
-  const batchSheetRows = (): (string | number)[][] => [
-    ['Training', 'Category', 'Budget', 'Materials', 'Other expenses', 'Actual', 'Variance', 'Variance %'],
-    ...batchRows.map((r) => [r.batch.name, budgetCategory(r.batch), r.batch.budget, r.materials, r.expenses, r.actual, r.variance, r.pct === null ? '' : `${r.pct.toFixed(1)}%`]),
   ];
   const expenseRows = (list: typeof expenses): (string | number)[][] => [
     ['Date', 'Category', 'Type', 'Description', 'Training', 'Amount', 'Recorded by'],
@@ -81,7 +74,6 @@ export default function BudgetPage() {
       { name: 'Monthly', rows: monthlyRows() },
       { name: 'By category', rows: categoryRows() },
       { name: 'Category by month', rows: categoryMonthMatrix(year, data, catRows.map((r) => r.c)) },
-      { name: 'Batches', rows: batchSheetRows() },
       { name: 'Expenses', rows: expenseRows(data.expenses.filter((e) => e.date.startsWith(String(year)))) },
     ]);
     await actions.audit('Export', 'report', null, `Budget workbook ${fy} (Excel)`);
@@ -180,20 +172,6 @@ export default function BudgetPage() {
         </div>
       </Card>
 
-      <Card title={month ? `Training batch variance · running in ${monthLabel(month)}` : 'Training batch variance'} padded={false} className="mb-6" actions={xl(() => exportTable('Training batch variance', 'batch-variance', batchSheetRows()))}>
-        <div className="overflow-x-auto">
-          <table className="tbl">
-            <thead><tr><th>Training</th><th>Category</th><th className="num">Budget</th><th className="num">Materials issued</th><th className="num">Other expenses</th><th className="num">Actual</th><th className="num">Variance</th><th className="num">Variance %</th></tr></thead>
-            <tbody>{batchRows.map((r) => (
-              <tr key={r.batch.id}><td className="min-w-48 font-medium text-navy-800">{r.batch.name}</td>
-                <td className="whitespace-nowrap text-sm">{budgetCategory(r.batch)}</td>
-                <td className="num">{mmk(r.batch.budget)}</td><td className="num">{mmk(r.materials)}</td><td className="num">{mmk(r.expenses)}</td><td className="num font-medium">{mmk(r.actual)}</td>
-                <td className={`num ${r.variance > 0 ? 'text-red-600' : 'text-emerald-700'}`}>{mmk(r.variance)}</td><td className={`num font-medium ${r.pct !== null && r.pct > 0 ? 'text-red-600' : 'text-emerald-700'}`}>{pct(r.pct)}</td></tr>
-            ))}</tbody>
-          </table>
-          {batchRows.length === 0 && <Empty>No batches in FY{year}.</Empty>}
-        </div>
-      </Card>
 
       <Card title={`Expense log${month ? ` · ${MONTHS[Number(month.slice(5)) - 1]} ${year}` : ''}${catFilter ? ` · ${catFilter}` : ''}`} padded={false}
         actions={<>
