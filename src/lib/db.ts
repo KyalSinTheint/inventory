@@ -158,7 +158,8 @@ export function supabaseAdapter(url: string, key: string): DataAdapter {
   async function selectAll(table: TableName) {
     const rows: unknown[] = [];
     for (let from = 0; ; from += PAGE) {
-      const { data, error } = await sb.from(table).select('*').order('created_at', { ascending: true }).range(from, from + PAGE - 1);
+      // settings is a single row keyed by id and has no created_at column.
+      const { data, error } = await sb.from(table).select('*').order(table === 'settings' ? 'id' : 'created_at', { ascending: true }).range(from, from + PAGE - 1);
       if (error) throw new Error(`${table}: ${error.message}`);
       rows.push(...(data ?? []));
       if (!data || data.length < PAGE) break;
