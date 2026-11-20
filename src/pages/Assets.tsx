@@ -118,7 +118,7 @@ function ActionModal({ asset: a, action, onClose }: { asset: Asset; action: Asse
       <div className="grid gap-3">
         {action === 'Check Out' && <>
           <Field label="Checked out to" required><input className="input" value={f.holder} onChange={(e) => setF({ ...f, holder: e.target.value })} placeholder="Trainer / staff name" /></Field>
-          <Field label="For training batch"><TrainingPicker value={f.batch_id} onChange={(id) => setF({ ...f, batch_id: id })} batches={data.batches.filter((b) => b.status !== 'Completed')} none="—" onDraft={training.onDraft} /></Field>
+          <Field label="Training"><TrainingPicker value={f.batch_id} onChange={(id) => setF({ ...f, batch_id: id })} batches={data.batches.filter((b) => b.status !== 'Completed')} none="—" onDraft={training.onDraft} /></Field>
         </>}
         {(action === 'Check In' || action === 'Maintenance Done') && (
           <Field label="Condition on return" required><select className="input" value={f.condition} onChange={(e) => setF({ ...f, condition: e.target.value as AssetCondition })}><option>Good</option><option>Fair</option><option>Damaged</option></select></Field>

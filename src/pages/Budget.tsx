@@ -243,7 +243,7 @@ function ExpenseModal({ onClose }: { onClose: () => void }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Date" required><input className="input" type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></Field>
         <Field label="Expense type"><select className="input" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{EXPENSE_TYPES.map((c) => <option key={c}>{c}</option>)}</select></Field>
-        <Field label="Training batch" className="sm:col-span-2"><TrainingPicker value={f.batch_id} onChange={(id) => setF({ ...f, batch_id: id })} batches={data.batches} none="No batch (choose category below)" onDraft={training.onDraft} /></Field>
+        <Field label="Training" className="sm:col-span-2"><TrainingPicker value={f.batch_id} onChange={(id) => setF({ ...f, batch_id: id })} batches={data.batches} none="No batch (choose category below)" onDraft={training.onDraft} /></Field>
         <Field label="Category" required className="sm:col-span-2" hint={batch ? 'Taken from the batch' : undefined}>
           {batch ? <input className="input" disabled value={budgetCategory(batch)} /> : (
             <select className="input" value={f.budget_category} onChange={(e) => setF({ ...f, budget_category: e.target.value as BudgetCategory })}>{BUDGET_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
