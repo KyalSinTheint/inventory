@@ -470,3 +470,16 @@ export function lineAmount(l: RequestLine, items: Item[]): number {
   const it = items.find((i) => i.id === l.item_id);
   return it ? lineValue(l, it) : 0;
 }
+
+/** The training a request is for: its own typed name and date, or (older requests) the saved training's. */
+export function requestTraining(r: Pick<MaterialRequest, 'batch_id' | 'training_name' | 'training_date'>, batches: Batch[]) {
+  const b = r.batch_id ? batches.find((x) => x.id === r.batch_id) : undefined;
+  return { name: r.training_name?.trim() || b?.name || 'Training', date: r.training_date || b?.start_date || null };
+}
+
+/** Training name for a stock movement: its saved training, or the training typed on the request it issued. */
+export function txnTraining(t: Pick<StockTxn, 'batch_id' | 'request_id'>, d: { batches: Batch[]; material_requests: MaterialRequest[] }): string {
+  if (t.batch_id) { const b = d.batches.find((x) => x.id === t.batch_id); if (b) return b.name; }
+  const r = t.request_id ? d.material_requests.find((x) => x.id === t.request_id) : undefined;
+  return r ? requestTraining(r, d.batches).name : '';
+}

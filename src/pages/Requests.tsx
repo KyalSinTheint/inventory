@@ -4,13 +4,12 @@ import { ClipboardList, Pencil, Plus, Trash2 } from 'lucide-react';
 import { GlassArea, notchMask } from '../components/glass';
 import { useData } from '../lib/store';
 import { type MaterialRequest, type RequestLine } from '../lib/types';
-import { canSplit, fmtPieces, fmtQty, lineAmount, linePieces, piecesIn, requestValue } from '../lib/logic';
+import { requestTraining, canSplit, fmtPieces, fmtQty, lineAmount, linePieces, piecesIn, requestValue } from '../lib/logic';
 import { date, mmk, monthLabel, num } from '../lib/format';
 import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { FileLink, FilePicker } from '../components/files';
 import { EXCEL_ACCEPT } from '../lib/files';
 import { Button, cx, Empty, ErrorNote, Field, Modal, PageHeader, useSubmit, useToast } from '../components/ui';
-import { TrainingPicker, useTrainingDraft } from '../components/TrainingPicker';
 import { RequestLinesTable } from '../components/RequestLines';
 import { COMMON_UNITS, categoriesOf } from '../lib/choices';
 import { ComboInput } from '../components/ComboInput';
@@ -51,13 +50,13 @@ const STATUS_PILL: Record<MaterialRequest['status'], { text: string; cls: string
 /** A material request drawn as a glass ticket: store → training, then items / qty / value. */
 function RequestTicket({ r, onOpen }: { r: MaterialRequest; onOpen: () => void }) {
   const { data, name } = useData();
-  const b = data.batches.find((x) => x.id === r.batch_id);
+  const tr = requestTraining(r, data.batches);
   // Whole units and single pieces are counted apart: "12 + 15 pcs".
   const units = r.lines.reduce((t, l) => t + (l.by_piece ? 0 : l.qty), 0);
   const pcs = r.lines.reduce((t, l) => t + (l.by_piece ? l.qty : 0), 0);
   const pill = STATUS_PILL[r.status];
   return (
-    <article className="group transition duration-300 hover:-translate-y-1" aria-label={`Request for ${b?.name ?? 'training'}, ${r.status}`}>
+    <article className="group transition duration-300 hover:-translate-y-1" aria-label={`Request for ${tr.name}, ${r.status}`}>
       {/* top half: notches cut at its bottom corners */}
       <div className="relative rounded-t-3xl border border-b-0 border-white/70 bg-white/55 px-5 pb-6 pt-5 backdrop-blur-xl sm:px-6" style={notchMask('bottom')}>
         <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-16 rounded-t-3xl bg-gradient-to-b from-white/70 to-transparent" />
@@ -81,9 +80,8 @@ function RequestTicket({ r, onOpen }: { r: MaterialRequest; onOpen: () => void }
             <div className="text-[11px] text-slate-400">{r.status === 'Approved' ? 'Issued' : 'To issue'}</div>
           </div>
           <div className="min-w-0 text-right">
-            <div className="line-clamp-2 text-base font-bold leading-tight text-kbz-dark sm:text-lg">{b?.name ?? '—'}</div>
-            <div className="truncate text-xs text-slate-500">{b?.program}{b?.location ? ` · ${b.location}` : ''}</div>
-            {b?.start_date && <div className="mt-1 text-sm text-slate-700">{date(b.start_date)}</div>}
+            <div className="line-clamp-2 text-base font-bold leading-tight text-kbz-dark sm:text-lg">{tr.name}</div>
+            {tr.date && <div className="mt-1 text-sm text-slate-700">{date(tr.date)}</div>}
           </div>
         </div>
       </div>
@@ -108,10 +106,10 @@ function RequestDetail({ r, onClose, onRevise }: { r: MaterialRequest; onClose: 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const del = useSubmit();
   const mine = r.created_by === user.id && r.status !== 'Approved';
-  const b = data.batches.find((x) => x.id === r.batch_id);
+  const tr = requestTraining(r, data.batches);
   const pill = STATUS_PILL[r.status];
   return (
-    <Modal wide open onClose={onClose} title={`Material request · ${b?.name ?? ''}`} footer={<>
+    <Modal wide open onClose={onClose} title={`Material request · ${tr.name}${tr.date ? ` (${date(tr.date)})` : ''}`} footer={<>
       {mine && (confirmDelete ? (
         <span className="mr-auto flex flex-wrap items-center gap-2 text-sm">
           <span className="text-kbz-red">Delete this request?</span>
@@ -150,9 +148,11 @@ type FormLine = { text: string; item_id: string; qty: string; by_piece: boolean;
 function RequestModal({ request, initialItem, onClose }: { request?: MaterialRequest; initialItem?: string; onClose: () => void }) {
   const { data, actions } = useData();
   const toast = useToast();
-  const batches = data.batches.filter((b) => b.status !== 'Completed' || b.id === request?.batch_id);
-  const [batchId, setBatchId] = useState(request?.batch_id ?? '');
-  const training = useTrainingDraft();
+  // The training is just typed on the request (name + optional date); it is not saved under Batches.
+  const prev = request ? requestTraining(request, data.batches) : null;
+  const [trainingName, setTrainingName] = useState(prev?.name === 'Training' ? '' : prev?.name ?? '');
+  const [trainingDate, setTrainingDate] = useState(request?.training_date ?? '');
+  const [showDate, setShowDate] = useState(!!request?.training_date);
   const [purpose, setPurpose] = useState(request?.purpose ?? '');
   const [remarks, setRemarks] = useState(request?.remarks ?? '');
   const [file, setFile] = useState<File[]>([]);
@@ -177,14 +177,23 @@ function RequestModal({ request, initialItem, onClose }: { request?: MaterialReq
       <span className="mr-auto self-center text-sm text-slate-600">Estimated value: <b>{mmk(total)}</b></span>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
       <Button busy={busy} onClick={() => run(async () => {
-        const batch_id = await training.resolve(batchId);
-        await actions.saveRequest({ id: request?.id, batch_id, purpose, remarks, lines: lines.filter((l) => l.item_id || l.text.trim() || l.qty).map(toLine) },
+        await actions.saveRequest({ id: request?.id, training_name: trainingName, training_date: trainingDate, purpose, remarks, lines: lines.filter((l) => l.item_id || l.text.trim() || l.qty).map(toLine) },
           file[0] ?? (removeFile ? null : undefined));
         toast('Request sent to HOD for approval'); onClose();
       })}>Submit for approval</Button>
     </>}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Training" required hint="Type the training name."><TrainingPicker value={batchId} onChange={setBatchId} batches={batches} required onDraft={training.onDraft} /></Field>
+        <Field label="Training" required>
+          <input className="input" value={trainingName} onChange={(e) => setTrainingName(e.target.value)} placeholder="Type the training name…" aria-label="Training" autoComplete="off" />
+          {showDate ? (
+            <div className="mt-2 flex items-center gap-2">
+              <input className="input" type="date" value={trainingDate} onChange={(e) => setTrainingDate(e.target.value)} aria-label="Training date" />
+              <button type="button" className="shrink-0 text-xs font-semibold text-slate-500 hover:text-kbz-red" onClick={() => { setShowDate(false); setTrainingDate(''); }}>Remove date</button>
+            </div>
+          ) : (
+            <button type="button" className="mt-1 text-xs font-semibold text-kbz-blue hover:underline" onClick={() => setShowDate(true)}>+ Add date (optional)</button>
+          )}
+        </Field>
         <Field label="Purpose"><input className="input" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Day 1–3 refreshments for 30 trainees" /></Field>
         <Field label="Remarks" className="sm:col-span-2"><textarea className="input min-h-24" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Details for the HOD: number of trainees, delivery date, sizes, special instructions…" /></Field>
         <Field label="Attachment (Excel list, etc.)" className="sm:col-span-2" hint="Excel, CSV, PDF or photo">

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { useData } from '../lib/store';
 import { TXN_LABELS } from '../lib/types';
-import { actsAsHod, fmtQty, fmtTxnQty, lineShort, requestValue, txnValue } from '../lib/logic';
+import { actsAsHod, requestTraining, fmtQty, fmtTxnQty, lineShort, requestValue, txnValue } from '../lib/logic';
 import { date, mmk, monthLabel, num } from '../lib/format';
 import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { Badge, Button, Card, Empty, ErrorNote, Field, Modal, PageHeader, StatusBadge, useSubmit, useToast } from '../components/ui';
@@ -61,10 +61,10 @@ export default function ApprovalsPage() {
                   return (
                     <li key={r.id} className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-start">
                       <div className="min-w-0 flex-1">
-                        {(() => { const b = batch(r.batch_id); return (
+                        {(() => { const tr = requestTraining(r, data.batches); return (
                           <div className="flex flex-wrap items-baseline gap-x-2">
-                            <span className="font-semibold text-navy-800">{b?.name ?? 'Training'}</span>
-                            {b && <span className="text-xs text-slate-500">{[b.program, b.location, b.start_date && `${date(b.start_date)}${b.end_date ? ` – ${date(b.end_date)}` : ''}`].filter(Boolean).join(' · ')}</span>}
+                            <span className="font-semibold text-navy-800">{tr.name}</span>
+                            {tr.date && <span className="text-xs text-slate-500">{date(tr.date)}</span>}
                             <span className="ml-auto font-bold text-kbz-blue">{mmk(requestValue(r, data.items))}</span>
                           </div>
                         ); })()}

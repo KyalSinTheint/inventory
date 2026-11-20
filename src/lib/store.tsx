@@ -3,7 +3,7 @@ import { createAdapter, type DataAdapter } from './db';
 import { compressImage } from './files';
 import { BUILTIN_IDS, groupOf, groupsFor, guessGroup, ICONS } from './itemGroups';
 import {
-  applyDelta, budgetCategory, can, canSplit, checkAvailability, fmtPieces, fmtQty, linePieces, pieceChange, piecesIn, r6, depositTransition, isCustomLine, isValidNrc, lineName, lineQtyText, nextRef, validateTrainingDates, normalizeNrc, RuleError, stockDelta, validateLines, validateNewDeposit,
+  applyDelta, budgetCategory, can, canSplit, checkAvailability, fmtPieces, fmtQty, linePieces, pieceChange, piecesIn, r6, depositTransition, isCustomLine, isValidNrc, lineName, lineQtyText, requestTraining, nextRef, validateTrainingDates, normalizeNrc, RuleError, stockDelta, validateLines, validateNewDeposit,
   type DepositAction, type Permission,
 } from './logic';
 import { categoriesOf, programsOf, tidyChoice } from './choices';
@@ -279,7 +279,7 @@ function makeActions(
       return saved;
     },
     /** file: a new attachment, null to remove it, undefined to keep the current one. */
-    async saveRequest(input: { id?: string; batch_id: string; purpose: string; remarks: string; lines: RequestLine[] }, file?: File | null) {
+    async saveRequest(input: { id?: string; training_name: string; training_date: string; purpose: string; remarks: string; lines: RequestLine[] }, file?: File | null) {
       need('request.create');
       const lines: RequestLine[] = input.lines.filter((l) => l.item_id || l.name?.trim()).map((l) => {
         if (!l.item_id) {
@@ -293,7 +293,10 @@ function makeActions(
         return it && canSplit(it) && l.by_piece ? { item_id: l.item_id, qty: l.qty, by_piece: true } : { item_id: l.item_id, qty: l.qty };
       });
       validateLines(lines);
-      if (!get().data.batches.some((b) => b.id === input.batch_id)) throw new RuleError('Choose a training batch.');
+      // The training is typed on the request itself (name + optional date); nothing is saved under Batches.
+      const training_name = input.training_name.trim().replace(/\s+/g, ' ');
+      if (!training_name) throw new RuleError('Type the training name.');
+      const training_date = input.training_date || null;
       const short = checkAvailability(lines, get().data.items);
       if (short.length) throw new RuleError(`Not enough stock: ${short.join('; ')}`);
       const filePatch: Partial<MaterialRequest> = file === undefined ? {} : { attachment: file ? await db.upload(file) : null };
@@ -301,14 +304,14 @@ function makeActions(
         const r = get().data.material_requests.find((x) => x.id === input.id);
         if (!r || r.status === 'Approved') throw new RuleError('Approved requests cannot be edited.');
         const saved = await update('material_requests', input.id, {
-          batch_id: input.batch_id, purpose: input.purpose.trim(), remarks: input.remarks.trim(), lines, ...filePatch,
+          batch_id: null, training_name, training_date, purpose: input.purpose.trim(), remarks: input.remarks.trim(), lines, ...filePatch,
           status: 'Pending', decided_by: null, decided_at: null, decision_note: null,
         });
         await audit('Resubmit', 'material_request', saved.id, `${saved.ref} (${lines.length} lines)`);
         return saved;
       }
       const saved = await insertWithRef('material_requests', 'MR', (ref) => ({
-        id: uid(), ref, batch_id: input.batch_id, purpose: input.purpose.trim(), remarks: input.remarks.trim(), lines, attachment: null, ...filePatch, status: 'Pending',
+        id: uid(), ref, batch_id: null, training_name, training_date, purpose: input.purpose.trim(), remarks: input.remarks.trim(), lines, attachment: null, ...filePatch, status: 'Pending',
         created_by: get().user.id, created_at: nowIso(), decided_by: null, decided_at: null, decision_note: null,
       }));
       await audit('Create', 'material_request', saved.id, `${saved.ref} (${lines.length} lines)`);
@@ -321,7 +324,7 @@ function makeActions(
       if (r.created_by !== get().user.id) throw new RuleError('Only the person who made a request can delete it.');
       if (r.status === 'Approved') throw new RuleError('An approved request has already issued stock and cannot be deleted.');
       const items = get().data.items;
-      const training = get().data.batches.find((b) => b.id === r.batch_id)?.name ?? '';
+      const training = requestTraining(r, get().data.batches).name;
       const summary = r.lines.map((l) => `${lineName(l, items)} × ${lineQtyText(l, items)}`).join(', ');
       await db.remove('material_requests', id);
       set((d) => ({ ...d, material_requests: d.material_requests.filter((x) => x.id !== id) }));

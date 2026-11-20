@@ -138,7 +138,12 @@ export interface RequestLine {
 export interface MaterialRequest {
   id: string;
   ref: string;
-  batch_id: string;
+  /** Older requests point at a saved training; new ones keep their own name and date below. */
+  batch_id: string | null;
+  /** Training name typed on the request. */
+  training_name?: string | null;
+  /** Training date typed on the request (optional). */
+  training_date?: string | null;
   purpose: string;
   remarks: string;
   lines: RequestLine[];

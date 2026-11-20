@@ -9,8 +9,8 @@ import { MonthBar, useMonthParam } from '../components/MonthBar';
 import { FileLink, FilePicker, Thumb, useFileUrl } from '../components/files';
 import { DOC_ACCEPT } from '../lib/files';
 import { useData } from '../lib/store';
-import { canSplit, fmtPieces, fmtQty, fmtTxnQty, piecePrice, piecesIn, r6 } from '../lib/logic';
-import { CLASSIFICATIONS, TXN_LABELS, type Category, type CountLine, type Item, type ReturnCondition } from '../lib/types';
+import { canSplit, fmtPieces, fmtQty, fmtTxnQty, piecePrice, piecesIn, r6, txnTraining } from '../lib/logic';
+import { CLASSIFICATIONS, TXN_LABELS, type Category, type CountLine, type Item, type ReturnCondition, type StockTxn } from '../lib/types';
 import { date, dateTime, mmk, monthEnd, monthLabel, num, thisMonth } from '../lib/format';
 import { Badge, Button, cx, Empty, ErrorNote, Field, Modal, PageHeader, SearchBox, StatusBadge, Tabs, useSubmit, useToast } from '../components/ui';
 import { COMMON_UNITS, categoriesOf, tidyChoice } from '../lib/choices';
@@ -338,7 +338,7 @@ function ItemDetailModal({ item: i, qty, onClose, onEdit, onStockIn }: { item: I
   const buys = txns.filter((t) => t.type === 'IN' && t.status !== 'Rejected');
   const lastBuy = buys.find((t) => t.status === 'Approved' && t.supplier !== 'Opening balance') ?? buys.find((t) => t.status === 'Approved');
   const issues = txns.filter((t) => t.type === 'OUT' && t.status === 'Approved');
-  const topic = (id: string | null) => data.batches.find((b) => b.id === id)?.name ?? '—';
+  const topic = (t: Pick<StockTxn, 'batch_id' | 'request_id'>) => txnTraining(t, data) || '—';
   const piece = piecePrice(i);
   const pu = pieceLabel(i);
   const out = qty <= 0;
@@ -417,7 +417,7 @@ function ItemDetailModal({ item: i, qty, onClose, onEdit, onStockIn }: { item: I
           {issues.slice(0, 5).map((t) => (
             <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-sm">
               <span className="w-24 shrink-0 text-slate-600">{date(when(t))}</span>
-              <span className="min-w-0 flex-1 truncate">{topic(t.batch_id)}</span>
+              <span className="min-w-0 flex-1 truncate">{topic(t)}</span>
               <b className="tabular-nums">{fmtTxnQty(t, i)}</b>
             </li>
           ))}
@@ -506,12 +506,12 @@ function TxnsTab({ month }: { month: string }) {
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
   const item = (id: string) => data.items.find((i) => i.id === id);
-  const topic = (id: string | null) => data.batches.find((b) => b.id === id)?.name ?? '';
+  const topic = (t: Pick<StockTxn, 'batch_id' | 'request_id'>) => txnTraining(t, data);
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase();
     return data.stock_txns
       .filter((t) => (!month || txnMonth(t) === month) && (!type || t.type === type) && (!status || t.status === status))
-      .filter((t) => !s || (item(t.item_id)?.name.toLowerCase().includes(s) ?? false) || topic(t.batch_id).toLowerCase().includes(s))
+      .filter((t) => !s || (item(t.item_id)?.name.toLowerCase().includes(s) ?? false) || topic(t).toLowerCase().includes(s))
       .sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 500);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.stock_txns, type, status, q, month]);
@@ -529,7 +529,7 @@ function TxnsTab({ month }: { month: string }) {
           <tbody>
             {rows.map((t) => (
               <tr key={t.id}>
-                <td className="min-w-40 font-medium text-navy-800">{topic(t.batch_id) || <span className="font-normal text-slate-400">—</span>}</td>
+                <td className="min-w-40 font-medium text-navy-800">{topic(t) || <span className="font-normal text-slate-400">—</span>}</td>
                 <td className="whitespace-nowrap">{date(t.created_at)}</td>
                 <td className="whitespace-nowrap">{TXN_LABELS[t.type]}{t.condition && <div className="text-xs text-slate-500">{t.condition}</div>}</td>
                 <td>{item(t.item_id)?.name}{t.attachment && <div className="text-xs"><FileLink att={t.attachment} /></div>}</td>
